@@ -10,10 +10,21 @@ description: |
 source:
   kind: concat_csvs
   cached_at: raw/cic_iomt2024/
-  # Public dataset; download from:
-  #   https://www.unb.ca/cic/datasets/iomt-dataset-2024.html
-  # Place every protocol CSV (WiFi-MQTT and Bluetooth trees flattened
-  # if you want them merged) under data/raw/cic_iomt2024/.
+  # ── MANUAL DOWNLOAD REQUIRED ────────────────────────────────────────
+  # As of 2026-04, CIC has locked down all direct-download URLs — every
+  # path 302-redirects to the licence form. tabprep cannot auto-download.
+  #
+  # To reproduce this profile:
+  #   1. Visit https://www.unb.ca/cic/datasets/iomt-dataset-2024.html
+  #   2. Click "Download" and complete the licence form. CIC emails you
+  #      a one-time download link.
+  #   3. Download the CSV-only subset (skip PCAPs). Both the WiFi-MQTT
+  #      and Bluetooth sub-trees are merged here under one profile.
+  #   4. Flatten all CSVs into data/raw/cic_iomt2024/.
+  #
+  # Once the raw CSVs are in place, run:
+  #   tabprep prepare --profile profiles/builtin/cic_iomt2024.yaml
+  #   python scripts/pin_hashes.py --profile profiles/builtin/cic_iomt2024.yaml
 
 label:
   source_column: label
