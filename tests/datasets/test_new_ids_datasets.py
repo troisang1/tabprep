@@ -60,11 +60,15 @@ def test_cic_apt_iiot_downloader_is_form_gated():
 
 # ---------- insdn downloader pin ------------------------------------------
 
-def test_insdn_downloader_is_form_gated():
-    """Mendeley's per-file download URLs are JS-rendered and rotate
-    per session — not safe to hard-code. Marked form-gated; user must
-    visit the landing page and download manually."""
-    assert InSDNDownloader.is_supported is False
+def test_insdn_downloader_uses_kaggle_mirror():
+    """Mendeley's per-file URLs are JS-rendered (rotate per session),
+    but the Kaggle public mirror `badcodebuilder/insdn-dataset` carries
+    the same 3 CSVs and is auto-fetchable via Kaggle's
+    `/api/v1/datasets/download/` endpoint (no auth for CC-BY datasets)."""
+    assert InSDNDownloader.is_supported is True
+    assert "kaggle.com" in InSDNDownloader.url
+    assert "insdn-dataset" in InSDNDownloader.url
+    assert InSDNDownloader.archive_format == "zip"
     assert "mendeley.com" in InSDNDownloader.landing_url
     assert InSDNDownloader.licence_note.startswith("CC-BY")
 

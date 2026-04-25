@@ -10,24 +10,19 @@ description: |
 source:
   kind: concat_csvs
   cached_at: raw/cic_iomt2024/
-  # ── MANUAL DOWNLOAD REQUIRED ────────────────────────────────────────
-  # As of 2026-04, CIC has locked down all direct-download URLs — every
-  # path 302-redirects to the licence form. tabprep cannot auto-download.
+  # ── MANUAL DOWNLOAD REQUIRED (Kaggle mirror has incompatible schema) ──
+  # UNB CIC's direct URLs are locked down post-2025. The Kaggle mirror
+  # `zeynepdemirta/ciciomt2024-attacks` / `ciciomt2024-profilling` exists
+  # and is curl-able without auth, BUT the CSVs there don't carry a
+  # `label` column — the label is encoded in the filename (e.g.,
+  # `ARP_Spoofing_test.pcap.csv`). Auto-fetching that Kaggle mirror
+  # requires a custom filename-label loader (similar to `nbaiot_dir`),
+  # which is future work.
   #
-  # To reproduce this profile:
-  #   1. Visit https://www.unb.ca/cic/datasets/iomt-dataset-2024.html
-  #   2. Click "Download" and complete the licence form. CIC emails you
-  #      a one-time download link.
-  #   3. Download the CSV-only subset (skip PCAPs). Both the WiFi-MQTT
-  #      and Bluetooth sub-trees are merged here under one profile.
-  #   4. Drop the entire downloaded structure under data/raw/cic_iomt2024/.
-  #      No flattening required — concat_csvs walks the tree recursively
-  #      and the schema-tolerant pd.concat aligns the WiFi-only and
-  #      Bluetooth-only columns automatically.
-  #
-  # Once the raw CSVs are in place, run:
-  #   tabprep prepare --profile profiles/builtin/cic_iomt2024.yaml
-  #   python scripts/pin_hashes.py --profile profiles/builtin/cic_iomt2024.yaml
+  # For now: visit https://www.unb.ca/cic/datasets/iomt-dataset-2024.html,
+  # complete the licence form (CIC emails a one-time link), download the
+  # CSV-only subset that includes a `label` column, and place it under
+  # raw/cic_iomt2024/.
 
 label:
   source_column: label

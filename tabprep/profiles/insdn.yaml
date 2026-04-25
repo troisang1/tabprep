@@ -6,10 +6,9 @@ description: |
   exploits / OVS controller-plane attacks). SDN-specific features
   (OpenFlow, flow-table entries) absent from conventional NIDS feeds.
 
-  Form-gated: Mendeley's per-file URLs are JS-rendered and rotate per
-  session. The user must visit the landing page, accept the CC-BY 4.0
-  licence, click "Download All", and place the resulting zip under
-  `raw/insdn/` before running prepare. See
+  Auto-fetched from the Kaggle public mirror
+  (`badcodebuilder/insdn-dataset`) since Mendeley's per-session URLs
+  are unreliable. ~22 MB ZIP → 3 CSVs in `InSDN_DatasetCSV/`. See
   `tabprep/datasets/insdn/README.md`.
 
 downloader: insdn

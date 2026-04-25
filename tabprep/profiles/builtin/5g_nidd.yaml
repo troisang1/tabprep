@@ -3,10 +3,17 @@ version: 1.0.0
 description: 5G-NIDD multi-class network attack flows (8 classes)
 
 source:
-  kind: url
-  url: "https://research.aalto.fi/en/datasets/5g-nidd-a-comprehensive-network-intrusion-detection-dataset"
-  cached_at: raw/5g_nidd/Combined.csv
-  # sha256 left blank — fill in once a stable upstream snapshot is identified.
+  kind: concat_csvs                            # changed from `url` so cached_at
+                                               # is a directory (auto-download
+                                               # extracts ZIP into a directory).
+  cached_at: raw/5g_nidd/
+  # The Aalto research portal page is 404 and IEEE DataPort requires
+  # subscription. The Kaggle public mirror `humera11/5g-nidd-dataset`
+  # carries the canonical `Combined.csv` (262 MB) under a 31 MB ZIP.
+  # Kaggle's `/api/v1/datasets/download/...` endpoint serves CC-BY
+  # datasets without auth (returns ZIP via GET, 404 on HEAD).
+  download_url: https://www.kaggle.com/api/v1/datasets/download/humera11/5g-nidd-dataset
+  archive_format: zip
 
 label:
   source_column: Attack Type

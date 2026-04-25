@@ -13,24 +13,13 @@ source:
   # through utf-8 → latin-1 → cp1252 per file, and CIC-DDoS-2019 mixes
   # encodings across its CSVs/01-12 vs CSVs/03-11 sub-trees.
   #
-  # ── MANUAL DOWNLOAD REQUIRED ────────────────────────────────────────
-  # As of 2026-04, CIC has locked down all direct-download URLs
-  # (cicresearch.ca and 205.174.165.80) — every path 302-redirects to
-  # the licence-acceptance form. tabprep cannot auto-download this.
-  #
-  # To reproduce this profile:
-  #   1. Visit https://www.unb.ca/cic/datasets/ddos-2019.html
-  #   2. Click "Download" and complete the licence form. CIC emails
-  #      you a one-time download link (or a Google Drive folder).
-  #   3. Download the CSV folders ONLY (skip PCAPs — multi-TB and not
-  #      used by this profile). The relevant directories are
-  #      `Dataset/CSVs/01-12/` and `Dataset/CSVs/03-11/`.
-  #   4. Drop the entire downloaded structure under data/raw/cic_ddos2019/.
-  #      No flattening required — concat_csvs walks the tree recursively.
-  #
-  # Once the raw CSVs are in place, run:
-  #   tabprep prepare --profile profiles/builtin/cic_ddos2019.yaml
-  #   python scripts/pin_hashes.py --profile profiles/builtin/cic_ddos2019.yaml
+  # UNB CIC's official URLs are locked down post-2025; the dataset is
+  # mirrored on Kaggle as `rodrigorosasilva/cic-ddos2019-30gb-full-dataset-csv-files`
+  # (~3 GB zipped, ~30 GB extracted, 19 CSVs in `01-12/` + `03-11/`).
+  # Kaggle's `/api/v1/datasets/download/` serves CC-BY datasets via GET
+  # without auth (HEAD returns 404 — Kaggle quirk; framework uses GET).
+  download_url: https://www.kaggle.com/api/v1/datasets/download/rodrigorosasilva/cic-ddos2019-30gb-full-dataset-csv-files
+  archive_format: zip
 
 label:
   source_column: Label

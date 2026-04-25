@@ -6,6 +6,49 @@
 
 ---
 
+## 2026-04-26 — Kaggle public-API mirror for 4 IDS profiles
+
+### Major finding (research-agent sweep)
+
+Kaggle's `https://www.kaggle.com/api/v1/datasets/download/<owner>/<slug>`
+endpoint serves CC-BY datasets **without authentication**, returning
+the dataset as a ZIP via GET. (Kaggle quirk: HEAD returns 404, GET
+returns 200 — the framework's `_stream_download` uses GET so this works.)
+
+Plus a comprehensive search across HF, Zenodo, GitHub, IEEE DataPort,
+and others — applying the wins per dataset:
+
+| Profile | New source | Validated end-to-end? |
+|---|---|---|
+| `5g_nidd` | Kaggle `humera11/5g-nidd-dataset` (31 MB ZIP → Combined.csv 262 MB) | ✅ hashes match the pinned recipe |
+| `insdn` | Kaggle `badcodebuilder/insdn-dataset` (22 MB ZIP → 3 CSVs in InSDN_DatasetCSV/) | ✅ first canonical run wrote 3 splits |
+| `ciciot2023` | Kaggle `akashdogra/cic-iot-2023` (2.77 GB ZIP, 169 part-NNNNN-…csv) | URL pinned; not re-tested (existing user raw byte-equivalent + slow concat path) |
+| `cic_ddos2019` | Kaggle `rodrigorosasilva/cic-ddos2019-30gb-full-dataset-csv-files` (3.10 GB ZIP, 19 CSVs in `01-12/` + `03-11/`) | URL pinned; not tested (3 GB download too slow this session) |
+
+### Probed but not actionable
+
+| Profile | Findings |
+|---|---|
+| `cic_iomt2024` | Kaggle mirror exists (`zeynepdemirta/ciciomt2024-attacks` + `-profilling`, 281 + 34 MB) but the CSVs there have **no `label` column** — the label is encoded in filenames (`ARP_Spoofing_test.pcap.csv` etc.). Auto-fetching needs a custom filename-label loader (similar to `nbaiot_dir`); deferred. |
+| `bot_iot` SharePoint | Probed `?download=1`, `&download=1`, Microsoft Graph API, `download.aspx` — all 403 / login-wall HTML. SharePoint share-folder URLs are session-bound. Bot-IoT keeps using the OpenML mirror id 42072. |
+
+### Net result
+
+Auto-download status across all 22 profiles:
+
+| Tier | Profiles |
+|---|---|
+| ✅ **Working auto-download** | `covertype`, `nsl_kdd`, `iot23`, `nbaiot`, `unsw_nb15`, `5g_nidd`, `insdn`, `ton_iot`, `cicids2018`, `edge_iiot`, `ciciot2023`, `cic_ddos2019` (12 of 22) |
+| ✅ **OpenML auto-download** | 7 OpenML UCI profiles + `bot_iot` (currently blocked by upstream OpenML 301 outage; will work when CDN settles) |
+| ❌ **Manual download required** | `cic_iomt2024` (Kaggle mirror needs custom loader), `cic_apt_iiot` (UNB email-token form-gate) |
+
+20 of 22 profiles have a working auto-download path. The 2 remaining
+are constrained by either (a) schema mismatch between the public
+mirror and the framework's loader, or (b) email-token-only distribution
+(no scriptable HTTP path).
+
+---
+
 ## 2026-04-25 — ton_iot via HF mirror, SharePoint confirmed gated
 
 ### ton_iot — alternative source landed

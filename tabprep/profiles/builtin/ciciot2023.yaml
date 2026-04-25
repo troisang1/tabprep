@@ -5,6 +5,14 @@ description: CIC-IoT-2023 (per-device flow CSVs concatenated)
 source:
   kind: concat_csvs
   cached_at: raw/ciciot2023/
+  # UNB CIC's direct URLs are locked down post-2025. The Kaggle public
+  # mirror `akashdogra/cic-iot-2023` (~2.77 GB ZIP) carries the
+  # canonical Spark-merged shard layout (`part-NNNNN-...c000.csv`,
+  # 169 files, byte-equivalent to the user's existing raw). Kaggle
+  # serves CC-BY datasets without auth via the `/api/v1/datasets/download/`
+  # endpoint.
+  download_url: https://www.kaggle.com/api/v1/datasets/download/akashdogra/cic-iot-2023
+  archive_format: zip
 
 label:
   source_column: label
