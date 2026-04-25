@@ -36,7 +36,15 @@ pipeline:
   - op: filter_min_class_count
     min_count: 50
   - op: balanced_subsample
-    max_total: 200000
+    max_total: 1000000                          # 1M cap matches other CIC
+                                                # profiles. Bot-IoT's input
+                                                # (5%-data subset) is 3.67M
+                                                # rows; the 200K cap from the
+                                                # initial commit was too
+                                                # aggressive given Bot-IoT's
+                                                # extreme class imbalance
+                                                # (Normal: 370, Theft: 80 rows
+                                                # in the entire input).
     seed: 42
 
 split:
