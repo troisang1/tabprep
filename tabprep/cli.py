@@ -13,13 +13,29 @@ from tabprep.core.profile import Profile, load_profile
 
 DEFAULT_OUTPUT_ROOT = Path("../processed")          # relative to cnNFST/data/tabprep/
 DEFAULT_DATA_ROOT = Path("..")                       # ditto — points at cnNFST/data/
-DEFAULT_BUILTIN_DIR = Path(__file__).parent.parent / "profiles" / "builtin"
+# Profile lookup: prefer `profiles/<name>.yaml` (v0.5 layout); fall
+# through to legacy `profiles/builtin/<name>.yaml` while we migrate.
+_PROFILE_DIRS = (
+    Path(__file__).parent.parent / "profiles",
+    Path(__file__).parent.parent / "profiles" / "builtin",
+)
 
 
 def _builtin_profiles() -> list[Path]:
-    if not DEFAULT_BUILTIN_DIR.is_dir():
-        return []
-    return sorted(DEFAULT_BUILTIN_DIR.glob("*.yaml"))
+    """Walk the candidate profile dirs and return every `*.yaml`.
+
+    A profile that lives in both `profiles/<name>.yaml` (v0.5 layout)
+    and `profiles/builtin/<name>.yaml` (v0.4 legacy) — which can happen
+    mid-migration — is reported only once, with the v0.5 path winning.
+    """
+    seen: dict[str, Path] = {}
+    for d in _PROFILE_DIRS:
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.yaml")):
+            if p.stem not in seen:
+                seen[p.stem] = p
+    return sorted(seen.values(), key=lambda p: p.stem)
 
 
 def _filter_profiles(paths: list[Path], source_kinds: list[str] | None) -> list[Path]:
@@ -56,14 +72,35 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def _ensure_cached(profile: Profile) -> None:
-    """If the profile carries a `download_url` (or `download_urls`) and
-    `cached_at` is empty, fetch + extract before the source loader runs.
-    No-op when:
-      - the cache is already populated;
-      - no download URL is declared (form-gated profiles).
+    """Trigger any auto-download declared by the profile.
+
+    v0.5 path (`profile.downloader: <name>`): look up the registered
+    `BaseDownloader` subclass, instantiate it, and call `download(cached_at)`.
+    Form-gated downloaders raise with their refusal message.
+
+    v0.4 legacy path (`profile.source.download_url(s)`): use the
+    `download_and_extract` helper directly. Retained until every built-
+    in profile is migrated.
     """
+    if profile.loader is not None:
+        # v0.5
+        if not profile.cached_at:
+            return
+        if profile.downloader is None:
+            return
+        from tabprep.datasets import DOWNLOADER_REGISTRY
+        cls = DOWNLOADER_REGISTRY.get(profile.downloader)
+        if cls is None:
+            raise ValueError(
+                f"unknown downloader {profile.downloader!r} "
+                f"(registered: {sorted(DOWNLOADER_REGISTRY)})"
+            )
+        cls().download(Path(profile.cached_at))
+        return
+
+    # v0.4 legacy
     src = profile.source
-    if not src.cached_at:
+    if src is None or not src.cached_at:
         return
     urls: list[str] = []
     if src.download_url:
@@ -75,9 +112,6 @@ def _ensure_cached(profile: Profile) -> None:
     from tabprep.core.downloader import derive_target_name
     cached = Path(src.cached_at)
     for u in urls:
-        # Multi-URL profiles use per-file idempotency (each URL is
-        # tracked by its target filename inside cached_at). Single-URL
-        # profiles use directory-level idempotency (any data anywhere).
         target = derive_target_name(u) if len(urls) > 1 else None
         download_and_extract(
             u,
@@ -88,15 +122,33 @@ def _ensure_cached(profile: Profile) -> None:
         )
 
 
-def _prepare_one(profile: Profile, out_root: Path, data_root: Path) -> int:
-    if profile.source.cached_at:
+def _resolve_cached_at(profile: Profile, data_root: Path) -> None:
+    """Resolve the profile's `cached_at` (v0.5) or `source.cached_at`
+    (v0.4) to an absolute path against `--data-root` when it is given
+    as a relative path. Mutates the profile in place.
+    """
+    if profile.loader is not None:
+        if profile.cached_at:
+            cached = Path(profile.cached_at)
+            if not cached.is_absolute():
+                profile.cached_at = str((data_root / cached).resolve())
+    elif profile.source is not None and profile.source.cached_at:
         cached = Path(profile.source.cached_at)
         if not cached.is_absolute():
             profile.source.cached_at = str((data_root / cached).resolve())
+
+
+def _prepare_one(profile: Profile, out_root: Path, data_root: Path) -> int:
+    _resolve_cached_at(profile, data_root)
     print(f"[tabprep] prepare {profile.name} v{profile.version}")
-    print(f"          source: kind={profile.source.kind} name={profile.source.name}")
-    if profile.source.cached_at:
-        print(f"          cached_at: {profile.source.cached_at}")
+    if profile.loader is not None:
+        print(f"          downloader: {profile.downloader}  loader: {profile.loader}")
+        if profile.cached_at:
+            print(f"          cached_at: {profile.cached_at}")
+    else:
+        print(f"          source: kind={profile.source.kind} name={profile.source.name}")
+        if profile.source.cached_at:
+            print(f"          cached_at: {profile.source.cached_at}")
     print(f"          output: {out_root.resolve() / profile.name}")
     _ensure_cached(profile)
     summary = run_pipeline(profile, output_root=out_root)
@@ -217,26 +269,44 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_download(args: argparse.Namespace) -> int:
-    """Fetch + extract the raw data for a profile carrying a download_url."""
+    """Fetch + extract the raw data for a profile.
+
+    v0.5: dispatches to `BaseDownloader.download(cached_at)`.
+    v0.4: uses `download_and_extract` directly with `source.download_url`.
+    """
     data_root = Path(args.data_root).expanduser()
     profile = load_profile(args.profile)
-    if not profile.source.download_url:
-        print(f"[skip] {profile.name}: no download_url in profile.\n"
-              f"  This dataset is form-gated. Visit:\n"
-              f"    {profile.source.url or '<see profile description>'}\n"
-              f"  …complete the licence form, then place the data under "
-              f"data/raw/{profile.name}/.",
+    _resolve_cached_at(profile, data_root)
+
+    if profile.loader is not None:
+        # v0.5
+        if not profile.cached_at:
+            print(f"[FAIL] {profile.name}: missing cached_at", file=sys.stderr)
+            return 1
+        if profile.downloader is None:
+            print(f"[skip] {profile.name}: no downloader declared.\n"
+                  f"  Place data under {profile.cached_at} manually.",
+                  file=sys.stderr)
+            return 2
+        from tabprep.datasets import DOWNLOADER_REGISTRY
+        cls = DOWNLOADER_REGISTRY.get(profile.downloader)
+        if cls is None:
+            print(f"[FAIL] unknown downloader {profile.downloader!r}", file=sys.stderr)
+            return 1
+        cls().download(Path(profile.cached_at))
+        return 0
+
+    # v0.4 legacy
+    if profile.source is None or not profile.source.download_url:
+        print(f"[skip] {profile.name}: no download_url in profile.",
               file=sys.stderr)
         return 2
-    if not profile.source.cached_at:
-        print(f"[FAIL] {profile.name}: profile has download_url but no cached_at",
-              file=sys.stderr)
+    cached = Path(profile.source.cached_at) if profile.source.cached_at else None
+    if cached is None:
+        print(f"[FAIL] {profile.name}: missing cached_at", file=sys.stderr)
         return 1
-
-    cached = Path(profile.source.cached_at)
     if not cached.is_absolute():
         cached = data_root / cached
-
     download_and_extract(
         profile.source.download_url,
         cached,

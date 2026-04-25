@@ -12,6 +12,39 @@ from tabprep.core.splits import run_split
 
 
 def _load_source(profile: Profile) -> tuple[pd.DataFrame, str]:
+    """Read raw bytes for `profile`, dispatching by schema version.
+
+    v0.5: profile carries top-level `loader: <name>` → look up in
+    `tabprep.datasets.LOADER_REGISTRY` and instantiate.
+    v0.4: profile carries `source: { kind: ... }` → look up in
+    `tabprep.sources.SOURCE_REGISTRY` (legacy path, retained until
+    every built-in profile is migrated to v0.5).
+    """
+    label_col = profile.label.rename_to
+
+    if profile.loader is not None:
+        # v0.5 path. Importing tabprep.datasets triggers the package
+        # walker which registers every dataset's @loader/@downloader.
+        from tabprep.datasets import LOADER_REGISTRY
+        cls = LOADER_REGISTRY.get(profile.loader)
+        if cls is None:
+            raise ValueError(
+                f"unknown loader {profile.loader!r} "
+                f"(registered: {sorted(LOADER_REGISTRY)})"
+            )
+        if profile.cached_at is None:
+            raise ValueError(
+                f"profile {profile.name!r}: loader requires `cached_at` to be set"
+            )
+        return cls().load(
+            Path(profile.cached_at),
+            label_col,
+            **(profile.loader_options or {}),
+        )
+
+    # v0.4 legacy path.
+    if profile.source is None:
+        raise ValueError(f"profile {profile.name!r}: no loader or source declared")
     from tabprep.sources import SOURCE_REGISTRY
     fn = SOURCE_REGISTRY.get(profile.source.kind)
     if fn is None:
@@ -19,7 +52,7 @@ def _load_source(profile: Profile) -> tuple[pd.DataFrame, str]:
             f"unknown source kind {profile.source.kind!r} "
             f"(registered: {sorted(SOURCE_REGISTRY)})"
         )
-    df, label_col = fn(profile.source, profile.label.rename_to)
+    df, label_col = fn(profile.source, label_col)
     return df, label_col
 
 

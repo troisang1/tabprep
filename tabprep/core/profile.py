@@ -99,11 +99,23 @@ class Profile:
     name: str
     version: str
     description: str
-    source: SourceSpec
     label: LabelSpec
     pipeline: list[OpSpec]
     split: SplitSpec
     output: OutputSpec
+    # v0.5: top-level downloader/loader vocabulary. Both fields are
+    # short names that look up classes in the dataset registries
+    # (`tabprep.datasets._base.DOWNLOADER_REGISTRY` /
+    # `LOADER_REGISTRY`). When both are set, the new dispatch path
+    # is used; otherwise the legacy `source:` block is required.
+    downloader: str | None = None
+    loader: str | None = None
+    cached_at: str | None = None
+    loader_options: dict[str, Any] = field(default_factory=dict)
+    # v0.4 legacy schema: a `source:` block carrying SourceSpec. Kept
+    # functional through Phases 2-4 of the v0.5 migration so un-
+    # migrated profiles continue to load.
+    source: SourceSpec | None = None
     expected_hashes: dict[str, str] = field(default_factory=dict)
     source_path: Path | None = None            # filled by load_profile
 
@@ -118,6 +130,20 @@ class Profile:
             )
         if self.output.precision < 0:
             raise ValueError("output.precision must be >= 0")
+        # Either the new dispatch (downloader+loader) OR the legacy
+        # `source:` block must be specified — never both, never neither.
+        new_set = self.downloader is not None and self.loader is not None
+        legacy_set = self.source is not None
+        if new_set and legacy_set:
+            raise ValueError(
+                "profile must use EITHER `downloader:`+`loader:` (v0.5) "
+                "OR `source:` (legacy v0.4) — not both"
+            )
+        if not new_set and not legacy_set:
+            raise ValueError(
+                "profile missing data-source declaration: set either "
+                "`downloader:`+`loader:` or `source:`"
+            )
 
 
 def _coerce_source(d: dict[str, Any]) -> SourceSpec:
@@ -180,7 +206,19 @@ def _coerce_output(d: dict[str, Any] | None) -> OutputSpec:
 
 
 def load_profile(path: str | Path) -> Profile:
-    """Read a YAML profile from disk and return a validated Profile."""
+    """Read a YAML profile from disk and return a validated Profile.
+
+    Supports two schemas:
+
+      * **v0.5 (preferred)**: top-level `downloader:` + `loader:` keys
+        plus `cached_at:` and an optional `loader_options:` dict.
+      * **v0.4 (legacy)**: a `source:` block with `kind`, `cached_at`,
+        download URLs, encoding/glob hints. Honoured through the v0.5
+        migration phases so un-migrated profiles continue to load.
+
+    Each profile must use exactly one of the two — `Profile.__post_init__`
+    enforces this.
+    """
     p = Path(path).expanduser().resolve()
     if not p.is_file():
         raise FileNotFoundError(f"profile not found: {p}")
@@ -188,19 +226,31 @@ def load_profile(path: str | Path) -> Profile:
     with p.open("r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
 
-    for key in ("name", "version", "description", "source", "label", "pipeline"):
+    for key in ("name", "version", "description", "label", "pipeline"):
         if key not in raw:
             raise ValueError(f"{p.name}: missing required top-level field '{key}'")
+
+    has_new_schema = "downloader" in raw or "loader" in raw
+    has_legacy_schema = "source" in raw
+    if not has_new_schema and not has_legacy_schema:
+        raise ValueError(f"{p.name}: must declare either `downloader:`+`loader:` "
+                         f"(v0.5) or `source:` (legacy v0.4)")
 
     profile = Profile(
         name=str(raw["name"]),
         version=str(raw["version"]),
         description=str(raw["description"]),
-        source=_coerce_source(raw["source"]),
         label=_coerce_label(raw["label"]),
         pipeline=_coerce_pipeline(raw.get("pipeline", [])),
         split=_coerce_split(raw.get("split")),
         output=_coerce_output(raw.get("output")),
+        # v0.5 fields:
+        downloader=raw.get("downloader"),
+        loader=raw.get("loader"),
+        cached_at=raw.get("cached_at"),
+        loader_options=dict(raw.get("loader_options") or {}),
+        # legacy:
+        source=_coerce_source(raw["source"]) if has_legacy_schema else None,
         expected_hashes=dict(raw.get("expected_hashes", {})),
     )
     profile.source_path = p
