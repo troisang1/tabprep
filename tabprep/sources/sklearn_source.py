@@ -26,7 +26,27 @@ def load_sklearn(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]:
     import importlib
     mod = importlib.import_module(module)
     fetch_fn = getattr(mod, fn_name)
-    bunch = fetch_fn(as_frame=True)
-    df = bunch.data.copy().reset_index(drop=True)
-    df[label] = pd.Series(bunch.target).astype(str).reset_index(drop=True).values
+
+    # Older sklearn versions silently fall back to ndarray output even when
+    # `as_frame=True` is requested if `pandas` isn't on the path the loader
+    # checks; newer versions reliably return a Bunch with a DataFrame `data`
+    # and a Series `target`. Normalise both.
+    try:
+        bunch = fetch_fn(as_frame=True)
+    except TypeError:
+        bunch = fetch_fn()
+
+    data = getattr(bunch, "data", bunch)
+    target = getattr(bunch, "target", None)
+    if target is None:
+        raise RuntimeError(f"sklearn source: {name!r} bunch has no 'target' attribute")
+
+    if not isinstance(data, pd.DataFrame):
+        feature_names = getattr(bunch, "feature_names", None)
+        if feature_names is None or len(feature_names) != data.shape[1]:
+            feature_names = [f"f{i}" for i in range(data.shape[1])]
+        data = pd.DataFrame(data, columns=list(feature_names))
+
+    df = data.reset_index(drop=True).copy()
+    df[label] = pd.Series(target).astype(str).reset_index(drop=True).values
     return df, label
