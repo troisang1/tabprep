@@ -5,6 +5,12 @@ description: N-BaIoT IoT botnet traffic (per-attack-family CSVs, label from file
 source:
   kind: nbaiot_dir
   cached_at: raw/nbaiot/
+  # UCI ML Repository serves the full N-BaIoT distribution as a single
+  # ZIP. Confirmed live as of 2026-04-25. The ZIP extracts to ~96 CSVs
+  # across 9 attack families × ~11 device dirs, which the nbaiot_dir
+  # source loader walks recursively.
+  download_url: https://archive.ics.uci.edu/static/public/442/detection+of+iot+botnet+attacks+n+baiot.zip
+  archive_format: zip
 
 label:
   source_column: label                         # set by the source loader

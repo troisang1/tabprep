@@ -6,6 +6,54 @@
 
 ---
 
+## 2026-04-25 — full URL validation matrix (all 22 profiles)
+
+### Status of every dataset profile
+
+| Profile | Schema | Auto-download | Today's status |
+|---|---|---|---|
+| `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har` | v0.5 | ✅ via OpenML | ⚠️ blocked: api.openml.org 301 outage today |
+| `covertype` | v0.5 | ✅ via sklearn `fetch_covtype` | ✅ validated end-to-end (clean run, hash match) |
+| `iot23` | v0.5 | ✅ Stratosphere CTU mirror | ✅ URL probe HTTP 200; cache-hit prepare validated |
+| `nsl_kdd` | v0.5 | ✅ GitHub `defcom17/NSL_KDD` | ✅ validated end-to-end (25 MB clean download) |
+| `bot_iot` | v0.5 | ✅ via OpenML id 42072 | ⚠️ blocked: same OpenML 301 outage |
+| `cic_apt_iiot` | v0.5 | ❌ FormGated | ✅ refusal fires correctly with corrected landing URL |
+| `insdn` | v0.5 | ❌ FormGated | ✅ refusal fires correctly |
+| `nbaiot` | v0.4 | ✅ now: UCI archive ZIP | URL pinned this commit; not re-tested (slow concat_csvs path) |
+| `cicids2018`, `ciciot2023`, `cic_ddos2019`, `cic_iomt2024` | v0.4 | ❌ no working mirror | UNB CIC restructured 2025 → all gated; pending Phase 4 FormGated migration |
+| `5g_nidd` | v0.4 | ❌ Aalto portal page 404 | pending Phase 4 FormGated migration |
+| `edge_iiot` | v0.4 | ❌ Mendeley/Kaggle gated | pending Phase 4 FormGated migration |
+| `ton_iot` | v0.4 | ❌ UNSW SharePoint | pending Phase 4 FormGated migration |
+| `unsw_nb15` | v0.4 | ❌ UNSW landing only | needs investigation: HuggingFace + GitHub mirrors I tried 404; IEEE DataPort + Kaggle exist but require auth |
+
+### Concretely landed in this commit
+
+`nbaiot` now has a **working auto-download URL** in its v0.4 profile:
+`https://archive.ics.uci.edu/static/public/442/detection+of+iot+botnet+attacks+n+baiot.zip`
+(curl HEAD confirmed HTTP 200; UCI ML Repository's permanent archive
+URL pattern). On a clean `raw/nbaiot/`, `tabprep prepare --profile nbaiot`
+will now fetch + extract before processing, instead of failing with
+"directory not found".
+
+### Pending — Phase 4 scope
+
+8 v0.4 profiles still need migration to v0.5 with `FormGatedDownloader`:
+
+  * **CIC family** (4): cicids2018, ciciot2023, cic_ddos2019,
+    cic_iomt2024 — all hit UNB's 2025 hosting lockdown. Same fix
+    pattern as `cic_apt_iiot`.
+  * **5g_nidd** — Aalto research portal page is 404; need to find
+    current home (likely IEEE DataPort).
+  * **edge_iiot** — Mendeley dataset 8gh34d4fpv is the official source;
+    same JS-rendered URL problem as InSDN.
+  * **ton_iot** — UNSW SharePoint; behind UNSW auth.
+  * **unsw_nb15** — UNSW research portal landing exists but the 4 CSV
+    files have moved; need to find current direct-download host.
+
+Phase 4 work is not started in this commit — just status-tracked here.
+
+---
+
 ## 2026-04-25 — URL validation + dead-mirror remediation
 
 ### What landed
