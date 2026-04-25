@@ -34,15 +34,16 @@ you.
 
 ---
 
-## Built-in profiles (15 datasets)
+## Built-in profiles (18 datasets)
 
-The repo ships profile recipes for every dataset in the [cnNFST / Hyper-NFST
-Track B benchmark](https://github.com/troisang1/cnNFST):
+The repo ships profile recipes for the [cnNFST / Hyper-NFST Track B
+benchmark](https://github.com/troisang1/cnNFST) plus three additional
+high-citation IDS datasets (CIC-DDoS-2019, CIC-IoMT-2024, IoT-23):
 
 | Domain | Profiles |
 |---|---|
 | **UCI tabular** (8) | `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har`, `covertype` |
-| **IDS network flows** (7) | `5g_nidd`, `ton_iot`, `nbaiot`, `edge_iiot`, `unsw_nb15`, `cicids2018`, `ciciot2023` |
+| **IDS network flows** (10) | `5g_nidd`, `ton_iot`, `nbaiot`, `edge_iiot`, `unsw_nb15`, `cicids2018`, `ciciot2023`, `cic_ddos2019`, `cic_iomt2024`, `iot23` |
 
 UCI profiles auto-fetch from OpenML / sklearn (no manual download). IDS
 profiles need a one-time manual download under `data/raw/<name>/` — the
@@ -203,8 +204,9 @@ Every op has the signature `fn(df, *, label_col, **params) -> df`.
 | `openml` | UCI profiles | Calls `sklearn.datasets.fetch_openml(name, version=1)`. Pin a version with `name@<version>`. |
 | `sklearn` | `covertype` | Built-in sklearn loaders (`fetch_covtype`, `fetch_kddcup99`, …). |
 | `url` | `5g_nidd`, `ton_iot`, `edge_iiot` | Reads a single CSV from `cached_at`. SHA-256-checks if `source.sha256` is set. |
-| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15` | Reads every `*.csv` under a directory and concatenates in lexical order. |
+| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15`, `cic_ddos2019`, `cic_iomt2024` | Reads every `*.csv` under a directory and concatenates in lexical order. |
 | `nbaiot_dir` | `nbaiot` | Same as `concat_csvs` but derives the label from each file's basename (N-BaIoT convention). |
+| `zeek_conn_log` | `iot23` | Reads Zeek `conn.log.labeled` files (TSV with `#fields` header), recursive. |
 | `manual` | (custom) | Reads a single user-provided CSV; no integrity check. |
 
 ---

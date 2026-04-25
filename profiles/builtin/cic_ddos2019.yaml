@@ -1,0 +1,56 @@
+name: cic_ddos2019
+version: 1.0.0
+description: |
+  CIC-DDoS-2019 (Sharafaldin et al., UNB) — fine-grained DDoS taxonomy
+  across 12 reflection / amplification attack types plus benign. Single
+  CICFlowMeter family, 80+ flow features. ~50M flows total — heavily
+  subsampled here for tractable benchmark use.
+
+source:
+  kind: concat_csvs
+  url: latin-1                                 # encoding override
+  cached_at: raw/cic_ddos2019/
+  # Public dataset; download from:
+  #   https://www.unb.ca/cic/datasets/ddos-2019.html
+  # Place every per-attack CSV under data/raw/cic_ddos2019/.
+
+label:
+  source_column: Label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: strip_column_whitespace
+  - op: filter_rows_label_isnull
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+  - op: balanced_subsample
+    max_total: 1000000                          # cap at 1M rows for tractability
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+# expected_hashes: pin after the first canonical run via
+#   tabprep prepare --profile profiles/builtin/cic_ddos2019.yaml
+#   python scripts/pin_hashes.py --profile profiles/builtin/cic_ddos2019.yaml

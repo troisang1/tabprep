@@ -1,0 +1,60 @@
+name: iot23
+version: 1.0.0
+description: |
+  IoT-23 (Stratosphere Lab, CTU Prague, 2020) — real IoT malware
+  captures on the Zeek `conn.log` schema. 23 captures, multi-class via
+  `detailed-label` (Mirai variants, Okiru, Torii, C&C, DDoS,
+  PartOfAHorizontalPortScan, etc.). Total ~325M flows; subsampled
+  here. Distinct from CIC-style captures because the data is real
+  malware running on real devices, not emulated traffic.
+
+source:
+  kind: zeek_conn_log
+  cached_at: raw/iot23/
+  # Public dataset (CC BY 4.0); download from:
+  #   https://www.stratosphereips.org/datasets-iot23
+  # Extract under data/raw/iot23/. The loader walks the tree
+  # recursively and reads every `*.labeled` file (one per capture).
+
+label:
+  source_column: detailed-label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  # The Zeek schema has a `label` column with values Malicious/Benign
+  # and a `detailed-label` column with the actual attack family. We use
+  # the latter as the multi-class target; rename_label drops the binary
+  # `label` automatically when `detailed-label` is renamed to `label`.
+  - op: drop_columns
+    columns: [ts, uid, tunnel_parents]         # timestamp + identifiers
+  - op: drop_ip_columns                        # id.orig_h, id.resp_h
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+  - op: balanced_subsample
+    max_total: 1000000
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+# expected_hashes: pin after the first canonical run.

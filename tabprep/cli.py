@@ -45,7 +45,10 @@ def cmd_list(args: argparse.Namespace) -> int:
     for p in profiles:
         try:
             prof = load_profile(p)
-            print(f"  {prof.name:<20} v{prof.version}   {prof.description}")
+            # Show only the first line of multi-line descriptions to keep
+            # the list output one-row-per-profile.
+            desc = (prof.description or "").splitlines()[0].strip()
+            print(f"  {prof.name:<20} v{prof.version}   {desc}")
         except Exception as exc:                                      # noqa: BLE001
             print(f"  {p.name}: <invalid: {exc}>")
     return 0
