@@ -100,6 +100,56 @@ Per-dataset families:
 Re-run the source-survey agent before starting to re-verify which
 mirrors are still curl-able as of the latest run date.
 
+### Bonus: public Python API (`tabprep.api`)
+
+Landed alongside Phase 3 in response to a user request. New top-level
+exports:
+
+```python
+import tabprep
+
+result = tabprep.prepare("pendigits")               # builtin name
+train_df, cal_df, test_df = tabprep.load_splits("pendigits")
+result = tabprep.prepare("./my_profile.yaml")        # custom YAML
+result = tabprep.prepare(profile_instance)           # programmatic Profile
+
+tabprep.list_profiles()                              # discover what's built in
+```
+
+**Surface:**
+- `tabprep.prepare(profile, output_dir=None, *, data_root=None,
+  skip_pipeline=False, quiet=False) → PrepareResult`
+- `tabprep.load_splits(profile, *, output_dir, data_root, skip_pipeline,
+  use_cache=True, quiet=True) → (train_df, cal_df, test_df)`
+- `tabprep.load_split(profile, split="train", **kw) → DataFrame`
+- `tabprep.list_profiles() → list[Profile]`
+- `tabprep.resolve_profile(spec) → Profile`
+- `tabprep.PrepareResult` (dataclass with `train`/`calibration`/`test`
+  paths, `sha256` map, `verified` flag, plus `.load(split)` / `.load_all()`)
+
+**Profile resolution:** bare strings → builtin lookup; strings with
+separators or `.yaml`/`.yml` suffix → filesystem path; `Path` →
+filesystem path; `Profile` → pass-through.
+
+**Caching:** `load_splits` and `load_split` reuse already-prepared CSVs
+when their hashes match `expected_hashes` (or no hashes are pinned),
+so notebook-style repeated calls are cheap. `prepare()` itself takes
+a defensive copy of the resolved Profile so callers holding a
+reference don't see their `cached_at` mutated to absolute.
+
+**Tests:** `tests/test_api.py` — 19 tests via a synthetic in-memory
+loader/downloader pair (`@loader("_apitest")` + `@downloader("_apitest")`),
+including a regression test for the Profile-mutation fix.
+
+**Example:** `examples/quickstart.py` walks through the five most
+common usage patterns.
+
+The CLI (`python -m tabprep prepare ...`) and the API are parallel
+entry points into `run_pipeline`; both produce byte-identical output
+for equivalent arguments. A future cleanup could collapse `cli.cmd_prepare`
+to a thin wrapper around `api.prepare`, but that's out of scope for
+Phase 3.
+
 ### Bonus: profiles now ship with the package (`tabprep/profiles/`)
 
 The repo-root `profiles/` directory was discovered to be outside the

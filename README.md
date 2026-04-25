@@ -54,6 +54,32 @@ preprocessing runs.
 
 ## Quickstart
 
+### From Python (recommended)
+
+```python
+import tabprep
+
+# One-call: prepare + return DataFrames
+train_df, cal_df, test_df = tabprep.load_splits("pendigits")
+
+# Or get explicit access to paths and verification status
+result = tabprep.prepare("pendigits")
+result.verified                         # True if hashes match the pinned recipe
+result.output_dir                       # ./prepared/pendigits/
+train_df = result.load("train")
+
+# Use a custom YAML
+result = tabprep.prepare("./my_profile.yaml", output_dir="./out")
+
+# Discover what's built in
+for prof in tabprep.list_profiles():
+    print(prof.name, prof.version, prof.description.splitlines()[0])
+```
+
+A walkable example lives at [`examples/quickstart.py`](examples/quickstart.py).
+
+### From the CLI
+
 ```bash
 git clone https://github.com/troisang1/tabprep.git
 cd tabprep
@@ -68,8 +94,9 @@ tabprep verify  --all                                # verify everything
 ```
 
 Default output goes to `./prepared/<dataset>/` (relative to the cwd);
-override with `--output-root`. Default raw-data root is `./raw/`;
-override with `--data-root`.
+override with `--output-root` (CLI) or `output_dir=` (Python API).
+Default raw-data root is `./raw/`; override with `--data-root` /
+`data_root=`.
 
 ---
 
@@ -281,6 +308,7 @@ tabprep/
 ├── README.md                          # this file
 ├── pyproject.toml                     # python package definition (ships profiles/*)
 ├── tabprep/                           # the package
+│   ├── api.py                         # public Python API (prepare / load_splits / …)
 │   ├── cli.py                         # `tabprep` shell entry point
 │   ├── __main__.py
 │   ├── core/
@@ -304,7 +332,9 @@ tabprep/
 │   └── profiles/                      # bundled profile YAMLs (ship with `pip install`)
 │       ├── *.yaml                     # 9 v0.5 profiles
 │       └── builtin/*.yaml             # 9 unmigrated v0.4 profiles
-├── tests/                             # pytest suite (59 tests, 0 net deps)
+├── tests/                             # pytest suite (78 tests, 0 net deps)
+├── examples/
+│   └── quickstart.py                  # five canonical Python API patterns
 ├── docs/
 │   └── DEVELOPMENT_LOG.md             # rolling per-phase handoff log
 ├── scripts/
