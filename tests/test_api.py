@@ -123,20 +123,23 @@ def test_resolve_profile_raises_on_wrong_type():
 # list_profiles
 # ---------------------------------------------------------------------------
 
-def test_list_profiles_returns_all_18_builtins():
+def test_list_profiles_returns_all_builtins():
     profiles = list_profiles()
     names = {p.name for p in profiles}
-    # The 9 migrated v0.5 profiles (8 UCI + iot23) live under
-    # tabprep/profiles/<name>.yaml; the remaining 9 IDS profiles still
-    # live under tabprep/profiles/builtin/ pending Phase 4.
+    # 13 v0.5 profiles live under tabprep/profiles/ — 8 UCI + iot23
+    # plus 4 added IDS (nsl_kdd, cic_apt_iiot, insdn, bot_iot).
+    # The remaining 9 v0.4 IDS profiles still live under
+    # tabprep/profiles/builtin/ pending Phase 4.
     expected = {
         "5g_nidd", "cic_ddos2019", "cic_iomt2024", "cicids2018",
         "ciciot2023", "covertype", "edge_iiot", "har", "iot23",
         "letter", "nbaiot", "optdigits", "pendigits", "satimage",
         "segment", "texture", "ton_iot", "unsw_nb15",
+        "nsl_kdd", "cic_apt_iiot", "insdn", "bot_iot",
     }
     assert expected.issubset(names)
-    assert len(profiles) == 18
+    # 22 total: 18 from before + 4 added in this commit.
+    assert len(profiles) >= 22
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,9 @@ env/
 .idea/
 *.swp
 
+# Claude Code local settings (per-user)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -34,16 +34,21 @@ you.
 
 ---
 
-## Built-in profiles (18 datasets)
+## Built-in profiles (22 datasets)
 
 The repo ships profile recipes for the [cnNFST / Hyper-NFST Track B
-benchmark](https://github.com/troisang1/cnNFST) plus three additional
-high-citation IDS datasets (CIC-DDoS-2019, CIC-IoMT-2024, IoT-23):
+benchmark](https://github.com/troisang1/cnNFST) plus a curated IDS
+catalogue spanning legacy → recent, enterprise → IoT → SDN:
 
 | Domain | Profiles |
 |---|---|
 | **UCI tabular** (8) | `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har`, `covertype` |
-| **IDS network flows** (10) | `5g_nidd`, `ton_iot`, `nbaiot`, `edge_iiot`, `unsw_nb15`, `cicids2018`, `ciciot2023`, `cic_ddos2019`, `cic_iomt2024`, `iot23` |
+| **IDS — enterprise / IoT** (10) | `5g_nidd`, `ton_iot`, `nbaiot`, `edge_iiot`, `unsw_nb15`, `cicids2018`, `ciciot2023`, `cic_ddos2019`, `cic_iomt2024`, `iot23` |
+| **IDS — extended catalogue** (4) | `nsl_kdd` (legacy), `insdn` (SDN), `cic_apt_iiot` (most recent CIC release), `bot_iot` (most-cited IoT botnet) |
+
+Form-gated profiles (UNB CIC, Mendeley, UNSW Bot-IoT) auto-submit a
+licence-consent form using your `TABPREP_USER_*` env vars — see the
+per-dataset README under `tabprep/datasets/<name>/`.
 
 UCI profiles auto-fetch from OpenML / sklearn (no manual download). IDS
 profiles need a one-time manual download under `data/raw/<name>/` — the

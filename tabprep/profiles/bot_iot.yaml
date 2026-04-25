@@ -1,0 +1,53 @@
+name: bot_iot
+version: 1.0.0
+description: |
+  Bot-IoT (Koroniotis et al., 2018) — UNSW Canberra IoT botnet flows.
+  One of the most-cited IoT IDS datasets. Multi-class taxonomy
+  (DDoS / DoS / OS-fingerprint / Service-scan / Theft / Recon / Normal).
+  Default ships the 10-best-features subset (~70 MB) for CI-friendliness.
+
+  Licence consent: requires `TABPREP_USER_*` env vars to identify
+  yourself to UNSW Bot-IoT's licence form. See
+  `tabprep/datasets/bot_iot/README.md`.
+
+downloader: bot_iot
+loader: bot_iot
+cached_at: raw/bot_iot/
+loader_options: {}
+
+label:
+  source_column: category
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: drop_columns
+    columns: [pkSeqID, attack, subcategory]   # binary `attack` and fine `subcategory` redundant with `category`
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+  - op: balanced_subsample
+    max_total: 200000
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+# expected_hashes pinned after the first canonical run.

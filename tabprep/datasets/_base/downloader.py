@@ -18,19 +18,28 @@ The base class provides:
     surface a friendly hint when `download()` is called on a profile
     whose `is_supported = False`.
 
-Two well-known concrete subclasses live in the framework:
-  * `tabprep.datasets._base.HTTPArchiveDownloader` — generic single-URL
-    fetch + extract (tar.gz / zip / gz / single file). Used by IoT-23,
-    UCI archive, etc.
-  * `tabprep.datasets._base.FormGatedDownloader` — polite refusal
-    that prints `landing_url` for the user to visit. Used by CIC
-    family, 5G-NIDD (IEEE DataPort), Edge-IIoTSet (Mendeley), etc.
+Three well-known concrete subclasses live in the framework:
+  * `HTTPArchiveDownloader` — generic single-URL fetch + extract
+    (tar.gz / zip / gz / single file). Used by IoT-23, UCI archive, etc.
+  * `HTTPMultiURLDownloader` — multi-URL variant (e.g. UNSW-NB15's
+    four numbered CSVs on Zenodo).
+  * `FormGatedDownloader` — polite refusal that prints `landing_url`
+    for the user to visit. Used for upstreams where the download URL
+    is genuinely behind interactive auth (Mendeley JS-signed, etc.).
 
-Each dataset's downloader can also subclass these convenience classes
-directly when the default behaviour fits.
+Both `HTTPArchiveDownloader` and `HTTPMultiURLDownloader` honour
+**licence-consent forms**: subclasses can set `consent_form_url` (and
+optionally `consent_form_fields` / `consent_form_user_keys`) to
+auto-POST a licence-acceptance form before fetching. User identity is
+read from `TABPREP_USER_NAME`/`EMAIL`/`AFFILIATION`/`PURPOSE` env vars,
+falling back to clearly-labelled placeholders with a loud warning.
+This serves UNB CIC's licence-consent forms, UNSW Bot-IoT's terms-of-
+use, and similar honor-system click-throughs. Strictly-gated datasets
+(JS-signed S3, SharePoint with auth) still need `FormGatedDownloader`.
 """
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import ClassVar
@@ -40,6 +49,96 @@ from tabprep.core.downloader import (
     download_and_extract,
     derive_target_name,
 )
+
+
+# ---------------------------------------------------------------------------
+# Licence-consent helpers (used by HTTPArchiveDownloader + HTTPMultiURLDownloader)
+# ---------------------------------------------------------------------------
+
+DEFAULT_USER_INFO: dict[str, str] = {
+    "name":        "tabprep User",
+    "email":       "tabprep-user@example.invalid",
+    "affiliation": "tabprep automated download",
+    "purpose":     "Reproducible ML benchmark preparation",
+}
+"""Placeholder identity used for licence-consent forms when the user
+hasn't set the corresponding `TABPREP_USER_*` env vars. Deliberately
+clear that this is a placeholder — dataset providers can see the
+request comes from this tool, not a fake real-looking name. Users
+**should** override these via env vars before running form-gated
+profiles in production."""
+
+
+def _get_user_info() -> dict[str, str]:
+    """Read user identity from `TABPREP_USER_NAME`/`EMAIL`/`AFFILIATION`/
+    `PURPOSE` env vars, falling back to `DEFAULT_USER_INFO` placeholders.
+
+    Prints a one-line warning per unset key so the user sees clearly
+    what placeholder values are being submitted. Many dataset providers
+    (UNB CIC, UNSW Bot-IoT) record these submissions for grant-reporting
+    or bibliometric purposes — please set your real info before running
+    a consent-form profile in published work.
+    """
+    info = dict(DEFAULT_USER_INFO)
+    using_defaults: list[str] = []
+    for key in info:
+        env_key = f"TABPREP_USER_{key.upper()}"
+        val = os.environ.get(env_key)
+        if val:
+            info[key] = val
+        else:
+            using_defaults.append(key)
+    if using_defaults:
+        keys = ", ".join(using_defaults)
+        env_names = ", ".join(f"TABPREP_USER_{k.upper()}" for k in using_defaults)
+        print(f"[tabprep] WARNING: licence consent will use placeholder "
+              f"values for: {keys}")
+        print(f"[tabprep]          set {env_names} to override "
+              f"(see datasets/<name>/README.md).")
+    return info
+
+
+def _submit_consent_form(
+    form_url: str,
+    *,
+    extra_fields: dict[str, str] | None = None,
+    user_keys: tuple[str, ...] = ("name", "email", "affiliation", "purpose"),
+) -> None:
+    """POST a licence-consent form. Best-effort: failures are logged
+    but don't abort — many providers' download URLs work even when
+    the form-submission endpoint changes / 404s, since the form is
+    informational rather than auth-gating.
+
+    Subclasses provide `extra_fields` for static form values (licence
+    acceptance checkboxes, dataset name, etc.). The `user_keys` tuple
+    selects which identity fields from `_get_user_info()` to include.
+    """
+    if not form_url:
+        return
+    info = _get_user_info()
+    payload: dict[str, str] = dict(extra_fields or {})
+    for k in user_keys:
+        if k in info:
+            payload[k] = info[k]
+
+    print(f"[tabprep] submitting consent form to {form_url}")
+    for k, v in payload.items():
+        # Truncate long values in the log for readability.
+        v_display = v if len(v) <= 60 else (v[:57] + "...")
+        print(f"          {k}: {v_display}")
+    try:
+        import requests
+        response = requests.post(form_url, data=payload, timeout=30)
+        # 200/302 are typical successes; 4xx/5xx warn but don't abort.
+        if response.status_code >= 400:
+            print(f"[tabprep] consent form returned HTTP {response.status_code} "
+                  f"— proceeding anyway (form is informational).")
+        else:
+            print(f"[tabprep] consent submitted (HTTP {response.status_code})")
+    except Exception as exc:                                          # noqa: BLE001
+        print(f"[tabprep] consent form submission failed: {exc}")
+        print("[tabprep]   continuing — most providers gate on a separate "
+              "download URL, not on the form submission itself.")
 
 
 class BaseDownloader(ABC):
@@ -100,23 +199,44 @@ class HTTPArchiveDownloader(BaseDownloader):
 
     Subclasses set the class attributes:
 
-        url: str                 # required
-        sha256: str | None       # optional integrity check
-        archive_format: str | None
-                                 # tar.gz | tgz | tar | zip | gz | none
-                                 # None → auto-detect from the URL suffix
+        url: str                          # required
+        sha256: str | None                # optional integrity check
+        archive_format: str | None        # tar.gz | tgz | tar | zip | gz | none
+                                          # None → auto-detect from URL suffix
+        consent_form_url: str             # optional — POST a licence-consent
+                                          #   form before fetching
+        consent_form_fields: dict[str, str]
+                                          # static fields the form expects
+                                          # (e.g. {"licence_accepted": "true",
+                                          #         "dataset": "CIC-APT-IIoT-2024"})
+        consent_form_user_keys: tuple[str, ...]
+                                          # subset of (name, email,
+                                          # affiliation, purpose) to include
 
-    Useful for IoT-23, UCI archive, Zenodo direct downloads, etc.
+    Useful for IoT-23, UCI archive, Zenodo direct downloads, and
+    UNB CIC datasets whose download URL is gated by a click-through
+    licence consent form.
     """
 
     url: ClassVar[str] = ""
     sha256: ClassVar[str | None] = None
     archive_format: ClassVar[str | None] = None
+    consent_form_url: ClassVar[str] = ""
+    consent_form_fields: ClassVar[dict[str, str]] = {}
+    consent_form_user_keys: ClassVar[tuple[str, ...]] = (
+        "name", "email", "affiliation", "purpose",
+    )
 
     def download(self, dest_dir: Path) -> None:
         if not self.url:
             raise RuntimeError(
                 f"{type(self).__name__}: subclass must set `url` class attribute"
+            )
+        if self.consent_form_url:
+            _submit_consent_form(
+                self.consent_form_url,
+                extra_fields=self.consent_form_fields,
+                user_keys=self.consent_form_user_keys,
             )
         download_and_extract(
             self.url,
@@ -129,21 +249,37 @@ class HTTPArchiveDownloader(BaseDownloader):
 class HTTPMultiURLDownloader(BaseDownloader):
     """Multi-URL variant for datasets that ship as several stand-alone
     files at distinct URLs (e.g. UNSW-NB15's four numbered CSVs on
-    Zenodo).
+    Zenodo, NSL-KDD's separate train/test files).
 
     Subclasses set:
 
-        urls: list[str]          # required, fetched in order
-        archive_format: str | None  # applied uniformly to every URL
+        urls: tuple[str, ...]                  # required, fetched in order
+        archive_format: str | None             # applied uniformly to every URL
+        consent_form_url: str                  # optional — POST consent first
+        consent_form_fields: dict[str, str]    # static fields
+        consent_form_user_keys: tuple[str, ...]  # which user_info keys to send
+
+    The consent form is submitted **once** before any URL is fetched.
     """
 
     urls: ClassVar[tuple[str, ...]] = ()
     archive_format: ClassVar[str | None] = None
+    consent_form_url: ClassVar[str] = ""
+    consent_form_fields: ClassVar[dict[str, str]] = {}
+    consent_form_user_keys: ClassVar[tuple[str, ...]] = (
+        "name", "email", "affiliation", "purpose",
+    )
 
     def download(self, dest_dir: Path) -> None:
         if not self.urls:
             raise RuntimeError(
                 f"{type(self).__name__}: subclass must set `urls` class attribute"
+            )
+        if self.consent_form_url:
+            _submit_consent_form(
+                self.consent_form_url,
+                extra_fields=self.consent_form_fields,
+                user_keys=self.consent_form_user_keys,
             )
         cached = Path(dest_dir)
         for u in self.urls:

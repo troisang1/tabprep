@@ -1,0 +1,54 @@
+name: insdn
+version: 1.0.0
+description: |
+  InSDN (Elsayed, Le-Khac & Jurcut, 2020) — canonical Software-Defined
+  Networking IDS dataset. Three traffic sources (benign / Metasploit
+  exploits / OVS controller-plane attacks). SDN-specific features
+  (OpenFlow, flow-table entries) absent from conventional NIDS feeds.
+
+  Licence consent: requires `TABPREP_USER_*` env vars to identify
+  yourself to Mendeley Data's licence form. See
+  `tabprep/datasets/insdn/README.md`.
+
+downloader: insdn
+loader: insdn
+cached_at: raw/insdn/
+loader_options: {}
+
+label:
+  source_column: Label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: strip_column_whitespace
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+  - op: balanced_subsample
+    max_total: 200000
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+# expected_hashes pinned after the first canonical run.

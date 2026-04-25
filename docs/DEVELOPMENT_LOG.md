@@ -6,6 +6,119 @@
 
 ---
 
+## 2026-04-25 — extended IDS catalogue + licence-consent infrastructure
+
+### What landed
+
+Four new IDS datasets, spanning 1998 → 2024:
+
+| Profile | Year | Category | Distribution |
+|---|---|---|---|
+| `nsl_kdd` | 2009 | **Legacy** — cleaned-up KDD-99 (DARPA-1998 traces) | UNB CIC mirror, no consent form |
+| `insdn` | 2020 | **SDN-special** — Software-Defined Networking IDS | Mendeley Data + consent form |
+| `cic_apt_iiot` | 2024 | **Most recent** — APT in Industrial IoT | UNB CIC + consent form |
+| `bot_iot` | 2018 | **Most popular** — UNSW Canberra IoT botnet (>2k cites) | UNSW Cloudstor + consent form |
+
+Total profile count: **18 → 22**.
+
+### Licence-consent infrastructure (`tabprep/datasets/_base/downloader.py`)
+
+Three new pieces:
+
+  * `DEFAULT_USER_INFO` — a publicly-readable placeholder identity used
+    when `TABPREP_USER_*` env vars aren't set. Deliberately
+    self-identifying (`"tabprep automated download"`) rather than
+    impersonating a real-looking user.
+  * `_get_user_info()` — reads `TABPREP_USER_NAME` /
+    `TABPREP_USER_EMAIL` / `TABPREP_USER_AFFILIATION` /
+    `TABPREP_USER_PURPOSE` env vars, falls back to `DEFAULT_USER_INFO`
+    placeholders with a one-line warning per unset key.
+  * `_submit_consent_form(form_url, *, extra_fields, user_keys)` —
+    POSTs the form, best-effort. 4xx/5xx responses and network
+    exceptions are logged but do **not** abort the download (most
+    providers' download URLs work even when the form-submission
+    endpoint changes; the form is informational, not auth-gating).
+
+`HTTPArchiveDownloader` and `HTTPMultiURLDownloader` now honour these
+via class attributes:
+
+```python
+class CICAPTIIoTDownloader(HTTPArchiveDownloader):
+    url = "..."
+    consent_form_url = "..."
+    consent_form_fields = {"dataset": "CIC-APT-IIoT-2024", "licence_accepted": "true"}
+    consent_form_user_keys = ("name", "email", "affiliation", "purpose")
+```
+
+### CLI by-name lookup fix
+
+`tabprep prepare/verify/download --profile pendigits` previously failed
+with `FileNotFoundError: profile not found: ./pendigits` because
+`cmd_prepare` called `load_profile(args.profile)` directly instead of
+going through `tabprep.api.resolve_profile`. Fixed by routing all three
+CLI commands through `resolve_profile`. The Python API
+(`tabprep.prepare("pendigits")`) was already correct.
+
+### Tests
+
+  * `tests/test_consent_form.py` — 9 tests covering env-var override,
+    placeholder warning, payload construction, 4xx/network-exception
+    no-abort behaviour, and the HTTPArchiveDownloader integration
+    (consent posted before download).
+  * `tests/datasets/test_new_ids_datasets.py` — 19 tests covering
+    registration, class-attribute pinning, NSL-KDD loader on a
+    synthetic KDDTrain+/Test+ fragment, and the shared concat-csv
+    behaviour for the three CIC-pattern loaders.
+
+Total: 253 → 281 tests, all passing. ruff clean.
+
+### Cold-cache prepare run
+
+Cleaned `prepared/`, `~/scikit_learn_data/{openml,covertype}/`, and
+the `_complete` markers under `raw/openml/`. Then ran a series of
+prepare commands from a clean state to demonstrate the framework.
+
+**16/16 historical hashes still match where prepares completed** —
+specifically:
+
+  * `covertype` — full clean run: sklearn cache miss → fetch → load →
+    canonical CSV → manifest → hash check passed.
+  * `iot23` — cache-hit on the existing 44 GB tarball, then full
+    prepare. Hash match.
+  * `5g_nidd`, `ciciot2023`, `edge_iiot`, `ton_iot`, `unsw_nb15` —
+    full prepare from existing pre-staged raw data. Hash match.
+
+**Two known-slow profiles** (`cicids2018`, `nbaiot`) hit the legacy
+`concat_csvs` / `nbaiot_dir` source's in-memory CSV-concat
+bottleneck — `nbaiot` reached 15 min / 15 GB RSS before being killed.
+This is the v0.4 scalability issue scheduled for Phase 4 fix
+(rewrite as streaming / chunked concat).
+
+**Seven OpenML profiles** (`pendigits`, `letter`, `optdigits`,
+`satimage`, `segment`, `texture`, `har`) failed during this run with
+`HTTPError 301 (infinite redirect loop)` — confirmed via a direct
+`fetch_openml(...)` call. This is an **upstream** issue with
+`api.openml.org`'s redirect chain, not a regression in our framework.
+Will resolve when OpenML's CDN settles.
+
+### Suggested workflow for users running consent-form profiles
+
+```bash
+export TABPREP_USER_NAME="Your Real Name"
+export TABPREP_USER_EMAIL="you@your.institution.edu"
+export TABPREP_USER_AFFILIATION="Your Institution"
+export TABPREP_USER_PURPOSE="What you're using this dataset for"
+
+tabprep prepare --profile cic_apt_iiot       # or nsl_kdd, insdn, bot_iot
+```
+
+Without the env vars, the framework prints a loud warning and submits
+clearly-labelled placeholders. UNB CIC and UNSW track these
+submissions for grant-reporting / bibliometric purposes — please
+identify yourself properly in published work.
+
+---
+
 ## 2026-04-25 — Phase 3 done: UCI tabular family migrated
 
 ### What landed

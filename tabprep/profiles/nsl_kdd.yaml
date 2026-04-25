@@ -1,0 +1,47 @@
+name: nsl_kdd
+version: 1.0.0
+description: |
+  NSL-KDD (Tavallaee et al., 2009) — cleaned-up KDD-99. The legacy IDS
+  baseline still widely cited 16+ years after capture (DARPA-1998 traces).
+  41 features + multi-class label spanning DoS / Probe / R2L / U2R.
+
+downloader: nsl_kdd
+loader: nsl_kdd
+cached_at: raw/nsl_kdd/
+loader_options:
+  use_files: ["KDDTrain+.txt", "KDDTest+.txt"]
+  drop_difficulty: true                    # NSL-KDD-specific score, not a feature
+
+label:
+  source_column: label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: encode_categoricals                # protocol_type / service / flag
+    max_cardinality: 100
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 30                          # U2R has very rare attack subtypes
+  - op: balanced_subsample
+    max_total: 100000
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+# expected_hashes pinned after the first canonical run (see scripts/pin_hashes.py).

@@ -206,7 +206,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     if not args.profile:
         print("[FAIL] specify --profile <path> or --all", file=sys.stderr)
         return 2
-    return _prepare_one(load_profile(args.profile), out_root, data_root)
+    from tabprep.api import resolve_profile
+    return _prepare_one(resolve_profile(args.profile), out_root, data_root)
 
 
 def _verify_one(profile: Profile, out_root: Path) -> int:
@@ -270,7 +271,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if not args.profile:
         print("[FAIL] specify --profile <path> or --all", file=sys.stderr)
         return 2
-    return _verify_one(load_profile(args.profile), out_root)
+    from tabprep.api import resolve_profile
+    return _verify_one(resolve_profile(args.profile), out_root)
 
 
 def cmd_download(args: argparse.Namespace) -> int:
@@ -279,8 +281,9 @@ def cmd_download(args: argparse.Namespace) -> int:
     v0.5: dispatches to `BaseDownloader.download(cached_at)`.
     v0.4: uses `download_and_extract` directly with `source.download_url`.
     """
+    from tabprep.api import resolve_profile
     data_root = Path(args.data_root).expanduser()
-    profile = load_profile(args.profile)
+    profile = resolve_profile(args.profile)
     _resolve_cached_at(profile, data_root)
 
     if profile.loader is not None:
