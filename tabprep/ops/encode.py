@@ -1,4 +1,4 @@
-"""Categorical encoding ops."""
+"""Categorical encoding + feature renaming ops."""
 from __future__ import annotations
 
 import numpy as np
@@ -55,3 +55,16 @@ def encode_categoricals(df: pd.DataFrame, *, label_col: str,
         encoded = encoded.drop(columns=to_drop)
 
     return encoded
+
+
+@op("rename_features_f0fN")
+def rename_features_f0fN(df: pd.DataFrame, *, label_col: str) -> pd.DataFrame:
+    """Rename non-label columns to f0, f1, ..., f(N-1) preserving source order.
+
+    Useful for OpenML-style tabular datasets where column names like
+    'V1, V2, ...' or 'A1, A2, ...' should be normalised to a consistent
+    'f0, f1, ...' convention.
+    """
+    feat_cols = [c for c in df.columns if c != label_col]
+    new_names = {c: f"f{i}" for i, c in enumerate(feat_cols)}
+    return df.rename(columns=new_names)

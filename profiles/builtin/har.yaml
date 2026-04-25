@@ -1,10 +1,10 @@
-name: pendigits
+name: har
 version: 1.0.0
-description: Pen-based handwritten digits (10 classes, 16 features) — OpenML
+description: Human Activity Recognition (6 classes, 561 features) — OpenML
 
 source:
   kind: openml
-  name: pendigits
+  name: har
 
 label:
   source_column: label
@@ -15,6 +15,9 @@ pipeline:
   - op: rename_features_f0fN
   - op: filter_min_class_count
     min_count: 50
+  - op: balanced_subsample
+    max_total: 10000
+    seed: 42
 
 split:
   kind: stratified_class_balanced
@@ -29,9 +32,7 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-# expected_hashes is set after the first canonical run (see README).
-
 expected_hashes:
-  calibration.csv: ecefce0dce8cc6051d7d24e16b8db0524cfd34deffdc52325ab40005f0152bbd
-  test.csv: b3e7b3ff890bb02ff52c66b877f4dab16e0c4b43fb9c9dab2ffbfb79c70a2102
-  train.csv: 9c978ee7e2090db91c36ec431744a34d95678e38008a4f5dfd74227555a03cf2
+  calibration.csv: 6a3a091c44827586baecadace30cdccf71ea9ae05e703d68a9993b59db5d454a
+  test.csv: 82287772f80ece9d6438a18c95148f3b191df07a7a90299651e946081b1806b3
+  train.csv: 132d11bfca80893df2817447f35c9e232cc90414a552d85af09460d5cb46eefe

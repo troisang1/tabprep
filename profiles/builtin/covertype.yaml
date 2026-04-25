@@ -1,0 +1,38 @@
+name: covertype
+version: 1.0.0
+description: Forest cover type (7 classes, 54 features) — sklearn fetch_covtype
+
+source:
+  kind: sklearn
+  name: covertype
+
+label:
+  source_column: label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: rename_features_f0fN
+  - op: filter_min_class_count
+    min_count: 50
+  - op: balanced_subsample
+    max_total: 10000
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.5
+  cal_frac:   0.1
+  test_frac:  0.4
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: 44227388532faecc4accec62e9b3f7729cac0c32bc29370a9a74062a1072dc98
+  test.csv: 8f6472040a577d0925c89b5132a098f263707192d2aaa40f1c56e5fc2e3d4b42
+  train.csv: a0f0045374f6d1e1146077f3bb29448f01c4276f1632f7e6a43b602e96abc754

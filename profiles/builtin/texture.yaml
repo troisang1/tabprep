@@ -1,10 +1,10 @@
-name: pendigits
+name: texture
 version: 1.0.0
-description: Pen-based handwritten digits (10 classes, 16 features) — OpenML
+description: Texture image classification (11 classes, 40 features) — OpenML
 
 source:
   kind: openml
-  name: pendigits
+  name: texture
 
 label:
   source_column: label
@@ -29,9 +29,7 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-# expected_hashes is set after the first canonical run (see README).
-
 expected_hashes:
-  calibration.csv: ecefce0dce8cc6051d7d24e16b8db0524cfd34deffdc52325ab40005f0152bbd
-  test.csv: b3e7b3ff890bb02ff52c66b877f4dab16e0c4b43fb9c9dab2ffbfb79c70a2102
-  train.csv: 9c978ee7e2090db91c36ec431744a34d95678e38008a4f5dfd74227555a03cf2
+  calibration.csv: 7d881d9e93f6ad7efefe55156f868dc8dd1e22730b0a08e53b8b179289920d15
+  test.csv: a289f0c31732220f361482a5358589541266e62c98dc7f01151bc7047e6dc4dd
+  train.csv: a35f84f86a5b0120022ed61dccd3a247c15a5f6a5280116cb950139d689d0a32
