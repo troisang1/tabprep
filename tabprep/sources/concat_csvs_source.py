@@ -46,10 +46,19 @@ from tabprep.sources._registry import source
 _DEFAULT_ENCODINGS: tuple[str, ...] = ("utf-8", "latin-1", "cp1252")
 
 
-def _resolve_encodings(spec_url: str | None) -> tuple[str, ...]:
-    if not spec_url:
+def _resolve_encodings(spec) -> tuple[str, ...]:
+    """Pick an encoding from the SourceSpec.
+
+    Priority:
+      1. `spec.encoding` (typed field, preferred for new profiles).
+      2. `spec.url` (legacy overload — accepted for backward compat with
+         profiles authored before the `encoding` field existed).
+      3. Default ladder: utf-8 → latin-1 → cp1252.
+    """
+    pinned = spec.encoding or spec.url
+    if not pinned:
         return _DEFAULT_ENCODINGS
-    pinned = spec_url.strip().lower()
+    pinned = pinned.strip().lower()
     if pinned in ("latin1", "latin-1"):
         return ("latin-1",)
     return (pinned,)
@@ -89,7 +98,7 @@ def load_concat_csvs(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]:
     if not files:
         raise FileNotFoundError(f"concat_csvs: no CSV files under {base}")
 
-    encodings = _resolve_encodings(spec.url)
+    encodings = _resolve_encodings(spec)
 
     parts: list[pd.DataFrame] = []
     for f in files:

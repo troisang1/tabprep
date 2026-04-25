@@ -98,7 +98,9 @@ def load_zeek_conn_log(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]
     if not base.is_dir():
         raise FileNotFoundError(f"zeek_conn_log: directory not found: {base}")
 
-    pattern, per_file_cap = _parse_options(spec.url)
+    # Prefer the typed `spec.glob` field (e.g. "*.labeled|per_file_cap=50000");
+    # fall back to the legacy `spec.url` overload for older profiles.
+    pattern, per_file_cap = _parse_options(spec.glob or spec.url)
     log_files = sorted(base.rglob(pattern))
     if not log_files:
         raise FileNotFoundError(

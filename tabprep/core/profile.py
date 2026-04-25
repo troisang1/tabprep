@@ -31,12 +31,33 @@ DEFAULT_SEED = 42
 
 @dataclass
 class SourceSpec:
-    """Where to fetch the raw data."""
-    kind: str                                  # url | sklearn | openml | manual
+    """Where to fetch the raw data.
+
+    Two URL fields:
+      - `url`           — landing/info page (informational; may also serve
+                          as a free-form metadata slot for legacy profiles
+                          that overload it for encoding / glob hints).
+      - `download_url`  — direct fetch URL the auto-downloader uses; if
+                          set and `cached_at` is empty, `tabprep prepare`
+                          fetches and extracts before running the
+                          pipeline.
+
+    For form-gated datasets (e.g. CIC), leave `download_url` unset and
+    document the manual-download steps in the profile description; the
+    framework will then surface a helpful FileNotFoundError pointing the
+    user at `url` for the licence form.
+    """
+    kind: str                                  # url | sklearn | openml | concat_csvs | nbaiot_dir | zeek_conn_log | manual
     name: str | None = None                    # sklearn / openml dataset key
-    url: str | None = None
-    sha256: str | None = None                  # raw-file integrity check
+    url: str | None = None                     # landing page or legacy metadata
+    sha256: str | None = None                  # raw-file integrity check (single-file sources)
     cached_at: str | None = None               # local relative path under data/raw/
+    download_url: str | None = None            # direct fetch URL for auto-download (single file/archive)
+    download_urls: list[str] | None = None     # multiple URLs (e.g. UNSW-NB15's 4 separate CSVs) — alternative to download_url
+    download_sha256: str | None = None         # verifies the downloaded archive bytes (single-URL only)
+    archive_format: str | None = None          # tar.gz | tgz | tar | zip | gz | none — auto-detected from URL when None
+    encoding: str | None = None                # CSV encoding hint for concat_csvs (utf-8 | latin-1 | cp1252)
+    glob: str | None = None                    # file-discovery pattern + options for zeek_conn_log (e.g. "*.labeled|per_file_cap=50000")
 
 
 @dataclass
@@ -108,6 +129,12 @@ def _coerce_source(d: dict[str, Any]) -> SourceSpec:
         url=d.get("url"),
         sha256=d.get("sha256"),
         cached_at=d.get("cached_at"),
+        download_url=d.get("download_url"),
+        download_urls=d.get("download_urls"),
+        download_sha256=d.get("download_sha256"),
+        archive_format=d.get("archive_format"),
+        encoding=d.get("encoding"),
+        glob=d.get("glob"),
     )
 
 

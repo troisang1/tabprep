@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from tabprep import __version__
+from tabprep.core.downloader import download_and_extract
 from tabprep.core.hashing import canonical_sha256_of_file
 from tabprep.core.pipeline import run_pipeline
 from tabprep.core.profile import Profile, load_profile
@@ -54,6 +55,39 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ensure_cached(profile: Profile) -> None:
+    """If the profile carries a `download_url` (or `download_urls`) and
+    `cached_at` is empty, fetch + extract before the source loader runs.
+    No-op when:
+      - the cache is already populated;
+      - no download URL is declared (form-gated profiles).
+    """
+    src = profile.source
+    if not src.cached_at:
+        return
+    urls: list[str] = []
+    if src.download_url:
+        urls.append(src.download_url)
+    if src.download_urls:
+        urls.extend(src.download_urls)
+    if not urls:
+        return
+    from tabprep.core.downloader import derive_target_name
+    cached = Path(src.cached_at)
+    for u in urls:
+        # Multi-URL profiles use per-file idempotency (each URL is
+        # tracked by its target filename inside cached_at). Single-URL
+        # profiles use directory-level idempotency (any data anywhere).
+        target = derive_target_name(u) if len(urls) > 1 else None
+        download_and_extract(
+            u,
+            cached,
+            archive_format=src.archive_format,
+            expected_sha256=src.download_sha256 if len(urls) == 1 else None,
+            target_name=target,
+        )
+
+
 def _prepare_one(profile: Profile, out_root: Path, data_root: Path) -> int:
     if profile.source.cached_at:
         cached = Path(profile.source.cached_at)
@@ -64,6 +98,7 @@ def _prepare_one(profile: Profile, out_root: Path, data_root: Path) -> int:
     if profile.source.cached_at:
         print(f"          cached_at: {profile.source.cached_at}")
     print(f"          output: {out_root.resolve() / profile.name}")
+    _ensure_cached(profile)
     summary = run_pipeline(profile, output_root=out_root)
 
     print("[ok] wrote files:")
@@ -181,6 +216,37 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return _verify_one(load_profile(args.profile), out_root)
 
 
+def cmd_download(args: argparse.Namespace) -> int:
+    """Fetch + extract the raw data for a profile carrying a download_url."""
+    data_root = Path(args.data_root).expanduser()
+    profile = load_profile(args.profile)
+    if not profile.source.download_url:
+        print(f"[skip] {profile.name}: no download_url in profile.\n"
+              f"  This dataset is form-gated. Visit:\n"
+              f"    {profile.source.url or '<see profile description>'}\n"
+              f"  …complete the licence form, then place the data under "
+              f"data/raw/{profile.name}/.",
+              file=sys.stderr)
+        return 2
+    if not profile.source.cached_at:
+        print(f"[FAIL] {profile.name}: profile has download_url but no cached_at",
+              file=sys.stderr)
+        return 1
+
+    cached = Path(profile.source.cached_at)
+    if not cached.is_absolute():
+        cached = data_root / cached
+
+    download_and_extract(
+        profile.source.download_url,
+        cached,
+        archive_format=profile.source.archive_format,
+        expected_sha256=profile.source.download_sha256,
+        force=bool(args.force),
+    )
+    return 0
+
+
 def cmd_init_profile(args: argparse.Namespace) -> int:
     """Stub — full implementation slated for v0.5."""
     print("[tabprep] init-profile is not yet implemented.\n"
@@ -226,6 +292,16 @@ def main(argv: list[str] | None = None) -> int:
                        help="Comma-separated source kinds to include with --all.")
     p_ver.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     p_ver.set_defaults(func=cmd_verify)
+
+    p_dl = sub.add_parser(
+        "download",
+        help="Fetch + extract a profile's raw data via its source.download_url.",
+    )
+    p_dl.add_argument("--profile", required=True)
+    p_dl.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT))
+    p_dl.add_argument("--force", action="store_true",
+                      help="Re-download even if cached_at already has data.")
+    p_dl.set_defaults(func=cmd_download)
 
     p_init = sub.add_parser("init-profile", help="Scaffold a profile YAML "
                                                  "from a sample (planned for v0.5).")
