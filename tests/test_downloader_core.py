@@ -101,6 +101,7 @@ def test_has_data_recurses_into_subdirs(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("url,expected", [
+    # Plain file URLs.
     ("https://example.com/data.csv", "data.csv"),
     ("https://example.com/folder/file.tar.gz", "file.tar.gz"),
     # Skip the trailing 'content' / 'download' segment (Zenodo-style).
@@ -108,18 +109,16 @@ def test_has_data_recurses_into_subdirs(tmp_path):
     ("https://example.com/path/file.zip/download", "file.zip"),
     # Querystring stripped before name detection.
     ("https://example.com/data.csv?token=abc", "data.csv"),
+    # Path with no extension anywhere → fall back to last path segment
+    # (NOT the host, even though the host has a dot).
+    ("https://example.com/raw_data", "raw_data"),
+    # Empty / root path → final fallback.
+    ("https://example.com/", "downloaded.bin"),
+    ("https://example.com", "downloaded.bin"),
+    # Host with a port — the port is part of netloc, not path; ignored.
+    ("https://example.com:8080/data.csv", "data.csv"),
+    # Fragment ignored.
+    ("https://example.com/data.csv#section", "data.csv"),
 ])
 def test_derive_target_name(url, expected):
     assert derive_target_name(url) == expected
-
-
-def test_derive_target_name_falls_back_to_host_when_path_has_no_extension():
-    """Known behaviour quirk: the function searches every segment of the
-    URL right-to-left for a dot, including the host. So a URL with no
-    file extension in the path returns the host (which has a dot).
-
-    In practice every download URL we use has a recognisable extension
-    in its path component, so this fallback is never hit. Documented
-    here as a regression test for the current behaviour, not as the
-    desired one."""
-    assert derive_target_name("https://example.com/raw_data") == "example.com"

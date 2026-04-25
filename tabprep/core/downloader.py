@@ -68,12 +68,21 @@ def _has_data(path: Path) -> bool:
 def derive_target_name(url: str) -> str:
     """Best-effort guess at what filename a URL should write to locally.
 
-    Walks the URL path right-to-left and returns the first segment with a
-    file extension. Handles Zenodo-style URLs where the last segment is
-    the literal word `content` or `download`.
+    Walks the URL **path** (host and querystring excluded) right-to-left
+    and returns the first segment with a file extension. Handles
+    Zenodo-style URLs where the last path segment is the literal word
+    `content` or `download`. If no path segment has a file extension,
+    falls back to the last path segment, then to `'downloaded.bin'`
+    when the path itself is empty.
+
+    Earlier versions naively `.split("/")` the whole URL, which let the
+    dotted hostname (`example.com`) match the "first segment with a `.`"
+    rule before any path segment was inspected — so a URL with no
+    extension in its path returned the host. Fixed by using
+    `urllib.parse.urlparse` to scope the search to `.path`.
     """
-    path = url.rsplit("?", 1)[0]
-    parts = [p for p in path.split("/") if p]
+    from urllib.parse import urlparse
+    parts = [p for p in urlparse(url).path.split("/") if p]
     for part in reversed(parts):
         if "." in part:
             return part
