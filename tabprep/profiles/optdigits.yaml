@@ -2,9 +2,12 @@ name: optdigits
 version: 1.0.0
 description: Optical recognition of handwritten digits (10 classes, 64 features) — OpenML
 
-source:
-  kind: openml
-  name: optdigits
+downloader: openml
+loader: openml
+cached_at: raw/openml/optdigits/
+loader_options:
+  openml_name: optdigits
+  openml_version: 1
 
 label:
   source_column: label

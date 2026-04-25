@@ -53,10 +53,14 @@ def test_stratified_split_is_deterministic():
 
 
 def test_load_pendigits_profile():
-    """The shipped pendigits profile should validate."""
+    """The shipped pendigits profile should validate (v0.5 schema)."""
     from pathlib import Path
-    p = Path(__file__).parent.parent / "profiles" / "builtin" / "pendigits.yaml"
+    p = Path(__file__).parent.parent / "tabprep" / "profiles" / "pendigits.yaml"
     prof = load_profile(p)
     assert prof.name == "pendigits"
-    assert prof.source.kind == "openml"
+    # v0.5 dispatch: top-level downloader/loader, no legacy `source:`.
+    assert prof.loader == "openml"
+    assert prof.downloader == "openml"
+    assert prof.source is None
+    assert prof.loader_options.get("openml_name") == "pendigits"
     assert any(op.op == "filter_min_class_count" for op in prof.pipeline)

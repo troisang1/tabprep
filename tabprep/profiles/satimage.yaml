@@ -2,9 +2,12 @@ name: satimage
 version: 1.0.0
 description: Statlog (Landsat Satellite) image (6 classes, 36 features) — OpenML
 
-source:
-  kind: openml
-  name: satimage
+downloader: openml
+loader: openml
+cached_at: raw/openml/satimage/
+loader_options:
+  openml_name: satimage
+  openml_version: 1
 
 label:
   source_column: label

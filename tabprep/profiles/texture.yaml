@@ -2,9 +2,12 @@ name: texture
 version: 1.0.0
 description: Texture image classification (11 classes, 40 features) — OpenML
 
-source:
-  kind: openml
-  name: texture
+downloader: openml
+loader: openml
+cached_at: raw/openml/texture/
+loader_options:
+  openml_name: texture
+  openml_version: 1
 
 label:
   source_column: label

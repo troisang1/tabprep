@@ -11,22 +11,27 @@ from tabprep.core.hashing import canonical_sha256_of_file
 from tabprep.core.pipeline import run_pipeline
 from tabprep.core.profile import Profile, load_profile
 
-DEFAULT_OUTPUT_ROOT = Path("../processed")          # relative to cnNFST/data/tabprep/
-DEFAULT_DATA_ROOT = Path("..")                       # ditto — points at cnNFST/data/
-# Profile lookup: prefer `profiles/<name>.yaml` (v0.5 layout); fall
-# through to legacy `profiles/builtin/<name>.yaml` while we migrate.
+# Defaults assume `tabprep` is run from its own project root (where
+# `raw/` and `prepared/` are siblings of the package).
+DEFAULT_OUTPUT_ROOT = Path("prepared")               # tabprep writes here
+DEFAULT_DATA_ROOT = Path(".")                        # raw/ lives at the project root
+# Profile lookup: bundled inside the package so `pip install tabprep`
+# ships the YAMLs (see `pyproject.toml`'s package_data glob). v0.5
+# profiles live in `tabprep/profiles/`; unmigrated v0.4 profiles live
+# under `tabprep/profiles/builtin/` until Phase 4 finishes.
 _PROFILE_DIRS = (
-    Path(__file__).parent.parent / "profiles",
-    Path(__file__).parent.parent / "profiles" / "builtin",
+    Path(__file__).parent / "profiles",
+    Path(__file__).parent / "profiles" / "builtin",
 )
 
 
 def _builtin_profiles() -> list[Path]:
     """Walk the candidate profile dirs and return every `*.yaml`.
 
-    A profile that lives in both `profiles/<name>.yaml` (v0.5 layout)
-    and `profiles/builtin/<name>.yaml` (v0.4 legacy) — which can happen
-    mid-migration — is reported only once, with the v0.5 path winning.
+    A profile that lives in both `tabprep/profiles/<name>.yaml` (v0.5
+    layout) and `tabprep/profiles/builtin/<name>.yaml` (v0.4 legacy) —
+    which can happen mid-migration — is reported only once, with the
+    v0.5 path winning.
     """
     seen: dict[str, Path] = {}
     for d in _PROFILE_DIRS:
@@ -321,7 +326,7 @@ def cmd_init_profile(args: argparse.Namespace) -> int:
     """Stub — full implementation slated for v0.5."""
     print("[tabprep] init-profile is not yet implemented.\n"
           "  See README.md ('Authoring a custom profile') for the planned UX.\n"
-          "  For now, copy profiles/builtin/pendigits.yaml as a starting point\n"
+          "  For now, copy tabprep/profiles/pendigits.yaml as a starting point\n"
           "  and edit the source/pipeline/split sections.",
           file=sys.stderr)
     return 2

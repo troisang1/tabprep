@@ -42,7 +42,16 @@ tabprep = "tabprep.cli:main"
 include = ["tabprep*"]
 
 [tool.setuptools.package-data]
-tabprep = ["py.typed"]
+# Bundle the profile YAMLs and per-dataset READMEs so `pip install
+# tabprep` ships them. This is what makes `tabprep.prepare("pendigits")`
+# work in non-editable installs (the bare-name lookup checks
+# `<install>/tabprep/profiles/<name>.yaml`).
+tabprep = [
+    "py.typed",
+    "profiles/*.yaml",
+    "profiles/builtin/*.yaml",
+    "datasets/*/README.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

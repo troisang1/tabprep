@@ -2,9 +2,12 @@ name: segment
 version: 1.0.0
 description: Image segmentation (7 classes, 19 features) — OpenML
 
-source:
-  kind: openml
-  name: segment
+downloader: openml
+loader: openml
+cached_at: raw/openml/segment/
+loader_options:
+  openml_name: segment
+  openml_version: 1
 
 label:
   source_column: label

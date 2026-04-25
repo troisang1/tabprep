@@ -2,9 +2,16 @@ name: pendigits
 version: 1.0.0
 description: Pen-based handwritten digits (10 classes, 16 features) — OpenML
 
-source:
-  kind: openml
-  name: pendigits
+# v0.5 schema: short downloader/loader names looked up in the
+# tabprep.datasets registries. The downloader pre-fetches the OpenML
+# bytes via sklearn (writes a `_complete` marker under cached_at);
+# the loader assembles `(df, label)` from `fetch_openml(...)`.
+downloader: openml
+loader: openml
+cached_at: raw/openml/pendigits/
+loader_options:
+  openml_name: pendigits
+  openml_version: 1
 
 label:
   source_column: label
@@ -29,8 +36,8 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-# expected_hashes is set after the first canonical run (see README).
-
+# Pinned against `fetch_openml("pendigits", version=1, as_frame=True,
+# parser="auto")`. Re-pin if the loader/op contract changes.
 expected_hashes:
   calibration.csv: ecefce0dce8cc6051d7d24e16b8db0524cfd34deffdc52325ab40005f0152bbd
   test.csv: b3e7b3ff890bb02ff52c66b877f4dab16e0c4b43fb9c9dab2ffbfb79c70a2102

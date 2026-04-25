@@ -66,7 +66,7 @@ note that doing so changes the output bytes — re-pin
 
 ## Reproducibility
 
-`tabprep prepare --profile profiles/iot23.yaml` from a clean tree:
+`tabprep prepare --profile iot23` (or `--profile tabprep/profiles/iot23.yaml`) from a clean tree:
 
 1. Downloads the 9.4 GB tarball into `data/raw/iot23/`.
 2. Extracts the 23 capture folders.

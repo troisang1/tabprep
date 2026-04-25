@@ -25,6 +25,11 @@ env/
 .DS_Store
 Thumbs.db
 
+# Raw upstream data fetched by `tabprep download` / `tabprep prepare`.
+# Never checked in — every byte is reproducible from the URL pinned in
+# the profile, plus (when set) the SHA-256 integrity check.
+raw/
+
 # Output of `tabprep prepare` runs (these are reproducible from profiles
 # + framework version, so we never check them in)
 prepared/

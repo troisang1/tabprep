@@ -55,46 +55,43 @@ preprocessing runs.
 ## Quickstart
 
 ```bash
-# Inside Python ≥ 3.10
 git clone https://github.com/troisang1/tabprep.git
 cd tabprep
 pip install -e .
 
-# List built-in profiles
-tabprep list
-
-# Prepare one (auto-downloads from OpenML for UCI profiles)
-tabprep prepare --profile profiles/builtin/pendigits.yaml
-
-# Verify reproducibility against the profile's pinned `expected_hashes`
-tabprep verify --profile profiles/builtin/pendigits.yaml
-
-# Prepare/verify the entire UCI subset (no manual download needed)
-tabprep prepare --all --source-kinds openml,sklearn
-tabprep verify --all --source-kinds openml,sklearn
-
-# Verify everything (assumes prepare has been run for IDS profiles too)
-tabprep verify --all
+tabprep list                                       # list built-in profiles
+tabprep prepare --profile pendigits                # by name (built-in lookup)
+tabprep prepare --profile ./my_profile.yaml        # custom YAML
+tabprep verify  --profile pendigits                # check pinned hashes match
+tabprep prepare --all --source-kinds openml,sklearn  # whole UCI subset
+tabprep verify  --all                                # verify everything
 ```
 
-Default output goes to `../processed/<dataset>/` (sibling to this repo when
-it lives under `cnNFST/data/tabprep/`); override with `--output-root`.
+Default output goes to `./prepared/<dataset>/` (relative to the cwd);
+override with `--output-root`. Default raw-data root is `./raw/`;
+override with `--data-root`.
 
 ---
 
 ## How a profile is structured
 
-Every profile is a single YAML file with this shape:
+Every profile is a single YAML file with this shape (v0.5 schema):
 
 ```yaml
 name: pendigits
 version: 1.0.0
 description: Pen-based handwritten digits (10 classes, 16 features) — OpenML
 
-source:                              # where the raw data comes from
-  kind: openml                       # openml | sklearn | url | concat_csvs |
-                                     # nbaiot_dir | manual
-  name: pendigits
+# v0.5 schema: short downloader/loader names looked up in the
+# tabprep.datasets registries. The downloader pre-fetches raw bytes
+# (writes a `_complete` marker into cached_at); the loader assembles
+# the (df, label_col) tuple.
+downloader: openml                   # registered class name
+loader: openml                       # registered class name
+cached_at: raw/openml/pendigits/     # relative to --data-root
+loader_options:
+  openml_name: pendigits
+  openml_version: 1                  # optional; defaults to 1
 
 label:                               # how to identify the target
   source_column: label
@@ -125,17 +122,25 @@ expected_hashes:                     # pinned after the first canonical run
   test.csv:         b3e7b3ff890bb0…
 ```
 
-When you run `tabprep prepare`, the executor:
+> **Migration note.** The v0.4 schema (`source: { kind, name, … }`) is
+> still accepted — un-migrated profiles in `tabprep/profiles/builtin/`
+> use it. v0.5's `downloader:`+`loader:` is preferred for new profiles
+> (per-dataset packages under `tabprep/datasets/<name>/` with their
+> own README, downloader, loader, and tests).
 
-1. Calls the **source loader** for `source.kind`, which returns a raw
-   `(dataframe, label_column)` tuple.
-2. Applies `rename_label` + `normalize_label_string` implicitly.
-3. Applies the ops in `pipeline` in order — each op is a pure function
+When you run `tabprep prepare` (or `tabprep.prepare(...)`), the executor:
+
+1. **Auto-downloads** raw data into `cached_at/` via the registered
+   `BaseDownloader` (idempotent — re-runs hit a cache marker).
+2. Calls the registered `BaseLoader.load(cached_at, label_col, **loader_options)`,
+   which returns a raw `(dataframe, label_column)` tuple.
+3. Applies `rename_label` + `normalize_label_string` implicitly.
+4. Applies the ops in `pipeline` in order — each op is a pure function
    `df → df`.
-4. Calls the **split** function to partition into train / calibration / test.
-5. Writes each split through the **canonical CSV writer**.
-6. Computes SHA-256 of every output file and writes `_manifest.json`.
-7. Cross-checks the observed hashes against `expected_hashes` (if pinned).
+5. Calls the **split** function to partition into train / calibration / test.
+6. Writes each split through the **canonical CSV writer**.
+7. Computes SHA-256 of every output file and writes `_manifest.json`.
+8. Cross-checks the observed hashes against `expected_hashes` (if pinned).
    Exits non-zero with a clear diff if they disagree.
 
 ---
@@ -197,52 +202,53 @@ Every op has the signature `fn(df, *, label_col, **params) -> df`.
 
 ---
 
-## Built-in source kinds
+## Built-in datasets and source kinds
+
+**v0.5 dataset packages** (preferred — `tabprep/datasets/<name>/`):
+
+| Package | Profiles | Downloader | Loader |
+|---|---|---|---|
+| `openml/` | `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har` | pre-fetches via `sklearn.datasets.fetch_openml` | reads name/version from `loader_options` |
+| `covertype/` | `covertype` | pre-fetches via `sklearn.datasets.fetch_covtype` | normalises the as_frame / ndarray fallback |
+| `iot23/` | `iot23` | direct download from Stratosphere CTU mirror | parses Zeek `conn.log.labeled` |
+
+**v0.4 source kinds** (still in use for unmigrated profiles in
+`tabprep/profiles/builtin/`; will be replaced by per-dataset packages
+in Phase 4):
 
 | Kind | Used by | What it does |
 |---|---|---|
-| `openml` | UCI profiles | Calls `sklearn.datasets.fetch_openml(name, version=1)`. Pin a version with `name@<version>`. |
-| `sklearn` | `covertype` | Built-in sklearn loaders (`fetch_covtype`, `fetch_kddcup99`, …). |
 | `url` | `5g_nidd`, `ton_iot`, `edge_iiot` | Reads a single CSV from `cached_at`. SHA-256-checks if `source.sha256` is set. |
-| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15`, `cic_ddos2019`, `cic_iomt2024` | Walks a directory tree recursively, reads every `*.csv` (case-insensitive extension), schema-tolerantly concatenates them. Encoding auto-falls through utf-8 → latin-1 → cp1252 per-file unless pinned via `source.url`. |
+| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15`, `cic_ddos2019`, `cic_iomt2024` | Walks a directory tree recursively, concatenates every `*.csv` (case-insensitive). Encoding auto-falls through utf-8 → latin-1 → cp1252 per-file. |
 | `nbaiot_dir` | `nbaiot` | Same as `concat_csvs` but derives the label from each file's basename (N-BaIoT convention). |
-| `zeek_conn_log` | `iot23` | Reads Zeek `conn.log.labeled` files (TSV with `#fields` header), recursive. |
 | `manual` | (custom) | Reads a single user-provided CSV; no integrity check. |
 
 ---
 
 ## Authoring a custom profile
 
-**(a) Use a built-in source.** Copy a built-in profile that uses a similar
-source kind and edit:
+**(a) Use a shipped loader.** Copy a built-in profile and adjust:
 
 ```bash
-cp profiles/builtin/pendigits.yaml profiles/user/my_data.yaml
-$EDITOR profiles/user/my_data.yaml      # adjust source / pipeline / split
-tabprep prepare --profile profiles/user/my_data.yaml
+cp $(python -c "import tabprep, pathlib; \
+print(pathlib.Path(tabprep.__file__).parent / 'profiles' / 'pendigits.yaml')") \
+   ./my_data.yaml
+$EDITOR ./my_data.yaml                  # adjust source / pipeline / split
+tabprep prepare --profile ./my_data.yaml
+# or, from Python:
+result = tabprep.prepare("./my_data.yaml")
 ```
 
 Then run [`scripts/pin_hashes.py`](scripts/pin_hashes.py) to bake the
 observed SHA-256s back into the profile, and re-run `tabprep verify` to
 confirm reproducibility.
 
-**(b) New source kind.** Add a single file under `tabprep/sources/`:
-
-```python
-# tabprep/sources/my_source.py
-import pandas as pd
-from tabprep.core.profile import SourceSpec
-from tabprep.sources._registry import source
-
-@source("my_kind")
-def load_my(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]:
-    df = ...
-    return df, label
-```
-
-Then add `from tabprep.sources import my_source  # noqa: F401` to
-`tabprep/sources/__init__.py` so the registry sees it at import time. Now
-`source.kind: my_kind` works in any profile.
+**(b) New dataset package (v0.5).** Add a directory under
+`tabprep/datasets/<name>/` with `downloader.py`, `loader.py`,
+`__init__.py`, and a README. The package self-registers via
+`@downloader("name")` / `@loader("name")` decorators when imported by
+the autoloader at startup. See `tabprep/datasets/openml/` for a
+fully-worked example.
 
 **(c) New op.** Same pattern under `tabprep/ops/`:
 
@@ -273,27 +279,34 @@ your job. There is no "auto-clean" mode.
 tabprep/
 ├── LICENSE                            # Apache 2.0
 ├── README.md                          # this file
-├── pyproject.toml                     # python package definition
+├── pyproject.toml                     # python package definition (ships profiles/*)
 ├── tabprep/                           # the package
+│   ├── cli.py                         # `tabprep` shell entry point
+│   ├── __main__.py
 │   ├── core/
 │   │   ├── profile.py                 # YAML loader + dataclass schema
 │   │   ├── pipeline.py                # source → ops → split → write
 │   │   ├── canonical.py               # byte-stable CSV writer
 │   │   ├── splits.py                  # train/cal/test implementations
 │   │   ├── manifest.py                # _manifest.json writer
-│   │   └── hashing.py                 # SHA-256 helpers
+│   │   ├── hashing.py                 # SHA-256 helpers
+│   │   └── downloader.py              # generic HTTP fetch + extract
 │   ├── ops/                           # registry-based ops
-│   │   ├── label.py / filter.py / clean.py / encode.py / sample.py
-│   ├── sources/                       # registry-based source loaders
-│   │   ├── openml_source.py / sklearn_source.py / url_source.py
-│   │   ├── concat_csvs_source.py / nbaiot_dir_source.py / manual.py
-│   ├── cli.py                         # `tabprep` entry point
-│   └── __main__.py
-├── profiles/builtin/                  # 15 reference profile YAMLs
-├── tests/                             # pytest suite
+│   │   └── label.py / filter.py / clean.py / encode.py / sample.py
+│   ├── datasets/                      # v0.5 per-dataset packages
+│   │   ├── _base/                     # BaseDownloader + BaseLoader + registry
+│   │   ├── openml/                    # 7-profile UCI family
+│   │   ├── covertype/                 # standalone sklearn fetch
+│   │   └── iot23/                     # Stratosphere CTU malware captures
+│   ├── sources/                       # v0.4 source loaders (legacy, used by
+│   │   │                              #                       unmigrated profiles)
+│   │   └── url_source.py / concat_csvs_source.py / nbaiot_dir_source.py / …
+│   └── profiles/                      # bundled profile YAMLs (ship with `pip install`)
+│       ├── *.yaml                     # 9 v0.5 profiles
+│       └── builtin/*.yaml             # 9 unmigrated v0.4 profiles
+├── tests/                             # pytest suite (59 tests, 0 net deps)
 ├── docs/
-│   ├── design.md                      # architecture + determinism contract
-│   └── adding_a_dataset.md            # how-to
+│   └── DEVELOPMENT_LOG.md             # rolling per-phase handoff log
 ├── scripts/
 │   └── pin_hashes.py                  # pins manifest hashes back into a profile
 └── .github/workflows/ci.yml           # lint + test + UCI reproducibility

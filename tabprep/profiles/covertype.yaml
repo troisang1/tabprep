@@ -2,9 +2,13 @@ name: covertype
 version: 1.0.0
 description: Forest cover type (7 classes, 54 features) — sklearn fetch_covtype
 
-source:
-  kind: sklearn
-  name: covertype
+# v0.5 schema. Standalone package (not part of the openml/ family)
+# because fetch_covtype has a different signature than fetch_openml
+# and an as_frame=True/ndarray normalisation step is required.
+downloader: covertype
+loader: covertype
+cached_at: raw/covertype/
+loader_options: {}
 
 label:
   source_column: label

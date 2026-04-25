@@ -1,10 +1,13 @@
-name: har
+name: letter
 version: 1.0.0
-description: Human Activity Recognition (6 classes, 561 features) — OpenML
+description: Letter recognition (26 classes, 16 features) — OpenML
 
-source:
-  kind: openml
-  name: har
+downloader: openml
+loader: openml
+cached_at: raw/openml/letter/
+loader_options:
+  openml_name: letter
+  openml_version: 1
 
 label:
   source_column: label
@@ -33,6 +36,6 @@ output:
   row_shuffle_seed: 42
 
 expected_hashes:
-  calibration.csv: 6a3a091c44827586baecadace30cdccf71ea9ae05e703d68a9993b59db5d454a
-  test.csv: 82287772f80ece9d6438a18c95148f3b191df07a7a90299651e946081b1806b3
-  train.csv: 132d11bfca80893df2817447f35c9e232cc90414a552d85af09460d5cb46eefe
+  calibration.csv: 3d68fa7ba96c0c148952e787b813fc63fdeb189859ef9a513207a7db526457fa
+  test.csv: 4fbd8216f7d87f33edfa8fa68bea383b23c7297e656114b75ad130f195daa9c4
+  train.csv: 489fcf7266ce69ef0548bc240356584f4bf98a641c812f68b2dd38bc3ee96161
