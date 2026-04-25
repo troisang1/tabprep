@@ -3,10 +3,16 @@ version: 1.0.0
 description: ToN-IoT network attack flows, multi-class
 
 source:
-  kind: url
-  url: "https://research.unsw.edu.au/projects/toniot-datasets"
-  cached_at: raw/ton_iot/train_test/train_test_network.csv
-  # sha256 left blank — fill in once a stable upstream snapshot is identified.
+  kind: concat_csvs                            # changed from `url` so cached_at
+                                               # is a directory (auto-download
+                                               # extracts files into a directory).
+  cached_at: raw/ton_iot/train_test/
+  # UNSW's official SharePoint URL is session-bound (returns 403 to
+  # non-browser clients). The HuggingFace mirror at
+  # `codymlewis/TON_IoT_network` carries the canonical
+  # `train_test_network.csv` (29.9 MB) — byte-equivalent to the UNSW
+  # original (sizes match exactly).
+  download_url: https://huggingface.co/datasets/codymlewis/TON_IoT_network/resolve/main/train_test_network.csv
 
 label:
   source_column: type

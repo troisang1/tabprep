@@ -6,6 +6,48 @@
 
 ---
 
+## 2026-04-25 — ton_iot via HF mirror, SharePoint confirmed gated
+
+### ton_iot — alternative source landed
+
+Found `codymlewis/TON_IoT_network/train_test_network.csv` on HuggingFace
+— **29,902,775 bytes**, byte-equivalent to the user's existing file
+(sizes match exactly). Migrated the profile from `kind: url` →
+`kind: concat_csvs` so cached_at can be a directory (auto-download
+needs that). Single-URL download to `raw/ton_iot/train_test/`.
+
+Real-run validated: backed up + deleted user's entire `raw/ton_iot/`,
+ran `tabprep prepare --profile ton_iot`, auto-fetched 28 MiB from HF,
+**all 3 hashes match the pinned recipe** ✅
+
+### UNSW SharePoint — confirmed un-scriptable
+
+Probed Bot-IoT and ToN-IoT SharePoint URLs with multiple variants:
+`?download=1`, `&download=1`, `?action=download`, `?d=download`,
+`download.aspx`, Microsoft Graph API. All return HTTP 403 to non-
+browser clients (Microsoft Graph returned HTTP 400). The `&download=1`
+variant returned HTTP 200, but a `GET` revealed the response body is
+just SharePoint's HTML login wall (173 KB), not the dataset.
+
+Conclusion: SharePoint share-folder URLs are session-bound (require
+browser cookie). Auto-download is **not feasible** without per-user
+Microsoft auth credentials, which would need OAuth flow integration —
+out of scope for this framework. Bot-IoT already has the OpenML
+mirror as workaround; ToN-IoT now has the HuggingFace `codymlewis`
+mirror.
+
+### Still unsupported
+
+| Profile | Best alternative found |
+|---|---|
+| `5g_nidd` | none — IEEE DataPort gated, Aalto research portal 404, HF/Kaggle mirrors auth-only or empty placeholder. The yushan1986 GitHub repo has analysis notebooks but no data files. |
+| `ciciot2023` | parquet mirror at `lacg030175/CIC-IoT-2023-full` (1 GB) — different format than our profile's `.csv` glob. Could add a v0.5 parquet loader but breaks pinned hashes. |
+| `cic_ddos2019` | no HF/GitHub mirror found. UNB CIC form-gated (email tokens). |
+| `cic_iomt2024` | same as cic_ddos2019. |
+| `insdn` | Kaggle mirror exists (`badcodebuilder/insdn-dataset`) but Kaggle API auth required. |
+
+---
+
 ## 2026-04-25 — deeper search: AWS S3, HuggingFace, official-source pivot
 
 ### User-direction shift
