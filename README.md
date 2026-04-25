@@ -204,7 +204,7 @@ Every op has the signature `fn(df, *, label_col, **params) -> df`.
 | `openml` | UCI profiles | Calls `sklearn.datasets.fetch_openml(name, version=1)`. Pin a version with `name@<version>`. |
 | `sklearn` | `covertype` | Built-in sklearn loaders (`fetch_covtype`, `fetch_kddcup99`, …). |
 | `url` | `5g_nidd`, `ton_iot`, `edge_iiot` | Reads a single CSV from `cached_at`. SHA-256-checks if `source.sha256` is set. |
-| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15`, `cic_ddos2019`, `cic_iomt2024` | Reads every `*.csv` under a directory and concatenates in lexical order. |
+| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15`, `cic_ddos2019`, `cic_iomt2024` | Walks a directory tree recursively, reads every `*.csv` (case-insensitive extension), schema-tolerantly concatenates them. Encoding auto-falls through utf-8 → latin-1 → cp1252 per-file unless pinned via `source.url`. |
 | `nbaiot_dir` | `nbaiot` | Same as `concat_csvs` but derives the label from each file's basename (N-BaIoT convention). |
 | `zeek_conn_log` | `iot23` | Reads Zeek `conn.log.labeled` files (TSV with `#fields` header), recursive. |
 | `manual` | (custom) | Reads a single user-provided CSV; no integrity check. |

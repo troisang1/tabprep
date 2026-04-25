@@ -8,8 +8,11 @@ description: |
 
 source:
   kind: concat_csvs
-  url: latin-1                                 # encoding override
   cached_at: raw/cic_ddos2019/
+  # `url` (encoding) intentionally unset — concat_csvs auto-falls
+  # through utf-8 → latin-1 → cp1252 per file, and CIC-DDoS-2019 mixes
+  # encodings across its CSVs/01-12 vs CSVs/03-11 sub-trees.
+  #
   # ── MANUAL DOWNLOAD REQUIRED ────────────────────────────────────────
   # As of 2026-04, CIC has locked down all direct-download URLs
   # (cicresearch.ca and 205.174.165.80) — every path 302-redirects to
@@ -22,7 +25,8 @@ source:
   #   3. Download the CSV folders ONLY (skip PCAPs — multi-TB and not
   #      used by this profile). The relevant directories are
   #      `Dataset/CSVs/01-12/` and `Dataset/CSVs/03-11/`.
-  #   4. Flatten the per-day CSVs into data/raw/cic_ddos2019/.
+  #   4. Drop the entire downloaded structure under data/raw/cic_ddos2019/.
+  #      No flattening required — concat_csvs walks the tree recursively.
   #
   # Once the raw CSVs are in place, run:
   #   tabprep prepare --profile profiles/builtin/cic_ddos2019.yaml
