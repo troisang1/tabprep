@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 from tabprep import __version__
 from tabprep.core.hashing import canonical_sha256_of_file
 from tabprep.core.pipeline import run_pipeline
-from tabprep.core.profile import load_profile
+from tabprep.core.profile import Profile, load_profile
 
 DEFAULT_OUTPUT_ROOT = Path("../processed")          # relative to cnNFST/data/tabprep/
 DEFAULT_DATA_ROOT = Path("..")                       # ditto — points at cnNFST/data/
@@ -20,6 +19,21 @@ def _builtin_profiles() -> list[Path]:
     if not DEFAULT_BUILTIN_DIR.is_dir():
         return []
     return sorted(DEFAULT_BUILTIN_DIR.glob("*.yaml"))
+
+
+def _filter_profiles(paths: list[Path], source_kinds: list[str] | None) -> list[Path]:
+    if not source_kinds:
+        return paths
+    wanted = {k.strip().lower() for k in source_kinds}
+    out: list[Path] = []
+    for p in paths:
+        try:
+            prof = load_profile(p)
+            if prof.source.kind.lower() in wanted:
+                out.append(p)
+        except Exception:                                              # noqa: BLE001
+            continue
+    return out
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -37,11 +51,7 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_prepare(args: argparse.Namespace) -> int:
-    profile = load_profile(args.profile)
-    out_root = Path(args.output_root).expanduser()
-    data_root = Path(args.data_root).expanduser()
-    # Resolve relative cached_at paths against --data-root.
+def _prepare_one(profile: Profile, out_root: Path, data_root: Path) -> int:
     if profile.source.cached_at:
         cached = Path(profile.source.cached_at)
         if not cached.is_absolute():
@@ -59,7 +69,6 @@ def cmd_prepare(args: argparse.Namespace) -> int:
               f"rows={f['rows']}  cols={f['cols']}  bytes={f['bytes']}")
     print(f"[ok] manifest: {summary['manifest_path']}")
 
-    # Optional: cross-check against `expected_hashes` if the profile carries them.
     if profile.expected_hashes:
         bad = []
         for f in summary["files"]:
@@ -76,15 +85,43 @@ def cmd_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_verify(args: argparse.Namespace) -> int:
-    profile = load_profile(args.profile)
+def cmd_prepare(args: argparse.Namespace) -> int:
+    out_root = Path(args.output_root).expanduser()
+    data_root = Path(args.data_root).expanduser()
+
+    if args.all:
+        kinds = args.source_kinds.split(",") if args.source_kinds else None
+        targets = _filter_profiles(_builtin_profiles(), kinds)
+        if not targets:
+            print(f"[FAIL] no built-in profiles match --source-kinds={args.source_kinds}",
+                  file=sys.stderr)
+            return 1
+        rc_total = 0
+        for path in targets:
+            print(f"\n══ {path.name} ══")
+            try:
+                profile = load_profile(path)
+                rc = _prepare_one(profile, out_root, data_root)
+            except Exception as exc:                                      # noqa: BLE001
+                print(f"[FAIL] {path.name}: {exc}", file=sys.stderr)
+                rc = 1
+            rc_total |= rc
+        return rc_total
+
+    if not args.profile:
+        print("[FAIL] specify --profile <path> or --all", file=sys.stderr)
+        return 2
+    return _prepare_one(load_profile(args.profile), out_root, data_root)
+
+
+def _verify_one(profile: Profile, out_root: Path) -> int:
     if not profile.expected_hashes:
         print(f"[skip] {profile.name}: no expected_hashes in profile.")
         return 0
-    out_dir = Path(args.output_root).expanduser() / profile.name
+    out_dir = out_root / profile.name
     if not out_dir.is_dir():
-        print(f"[FAIL] no output dir at {out_dir} — run `tabprep prepare` first.",
-              file=sys.stderr)
+        print(f"[FAIL] {profile.name}: no output dir at {out_dir} — "
+              f"run `tabprep prepare` first.", file=sys.stderr)
         return 1
 
     bad = []
@@ -106,9 +143,44 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify(args: argparse.Namespace) -> int:
+    out_root = Path(args.output_root).expanduser()
+
+    if args.all:
+        kinds = args.source_kinds.split(",") if args.source_kinds else None
+        targets = _filter_profiles(_builtin_profiles(), kinds)
+        if not targets:
+            print(f"[FAIL] no built-in profiles match --source-kinds={args.source_kinds}",
+                  file=sys.stderr)
+            return 1
+        rc_total = 0
+        n_ok = 0
+        n_skip = 0
+        for path in targets:
+            try:
+                profile = load_profile(path)
+                rc = _verify_one(profile, out_root)
+                if rc == 0:
+                    n_ok += 1 if profile.expected_hashes else 0
+                    n_skip += 0 if profile.expected_hashes else 1
+                else:
+                    rc_total |= rc
+            except Exception as exc:                                      # noqa: BLE001
+                print(f"[FAIL] {path.name}: {exc}", file=sys.stderr)
+                rc_total |= 1
+        print(f"\n[summary] verified {n_ok} / {len(targets)} profile(s) "
+              f"(skipped {n_skip} without expected_hashes)")
+        return rc_total
+
+    if not args.profile:
+        print("[FAIL] specify --profile <path> or --all", file=sys.stderr)
+        return 2
+    return _verify_one(load_profile(args.profile), out_root)
+
+
 def cmd_init_profile(args: argparse.Namespace) -> int:
-    """Stub for v0.2 — not implemented yet."""
-    print("[tabprep] init-profile is not yet implemented in v0.1.\n"
+    """Stub — full implementation slated for v0.5."""
+    print("[tabprep] init-profile is not yet implemented.\n"
           "  See README.md ('Authoring a custom profile') for the planned UX.\n"
           "  For now, copy profiles/builtin/pendigits.yaml as a starting point\n"
           "  and edit the source/pipeline/split sections.",
@@ -129,7 +201,12 @@ def main(argv: list[str] | None = None) -> int:
     p_list.set_defaults(func=cmd_list)
 
     p_prep = sub.add_parser("prepare", help="Run a profile end-to-end.")
-    p_prep.add_argument("--profile", required=True, help="Path to a profile YAML.")
+    p_prep.add_argument("--profile", help="Path to a profile YAML.")
+    p_prep.add_argument("--all", action="store_true",
+                        help="Run every built-in profile (filterable with --source-kinds).")
+    p_prep.add_argument("--source-kinds",
+                        help="Comma-separated source kinds to include "
+                             "with --all (e.g. 'openml,sklearn' for the UCI subset).")
     p_prep.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT),
                         help=f"Where to write outputs (default: {DEFAULT_OUTPUT_ROOT}).")
     p_prep.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT),
@@ -139,12 +216,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p_ver = sub.add_parser("verify", help="Verify a previous prepare run "
                                           "against expected_hashes.")
-    p_ver.add_argument("--profile", required=True)
+    p_ver.add_argument("--profile", help="Path to a profile YAML.")
+    p_ver.add_argument("--all", action="store_true",
+                       help="Verify every built-in profile (filterable with --source-kinds).")
+    p_ver.add_argument("--source-kinds",
+                       help="Comma-separated source kinds to include with --all.")
     p_ver.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     p_ver.set_defaults(func=cmd_verify)
 
     p_init = sub.add_parser("init-profile", help="Scaffold a profile YAML "
-                                                 "from a sample (v0.2 todo).")
+                                                 "from a sample (planned for v0.5).")
     p_init.add_argument("name")
     p_init.add_argument("--source", required=False)
     p_init.add_argument("--source-url", required=False)

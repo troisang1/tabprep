@@ -1,8 +1,6 @@
 """Bootstrap smoke tests — no network access, no real data sources."""
 from __future__ import annotations
 
-import io
-import textwrap
 
 import numpy as np
 import pandas as pd
