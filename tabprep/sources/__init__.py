@@ -11,5 +11,6 @@ from tabprep.sources._registry import SOURCE_REGISTRY, source  # noqa: F401
 
 # Importing populates the registry.
 from tabprep.sources import openml_source, sklearn_source, url_source, manual  # noqa: F401, E402
+from tabprep.sources import concat_csvs_source, nbaiot_dir_source  # noqa: F401, E402
 
 __all__ = ["SOURCE_REGISTRY", "source"]

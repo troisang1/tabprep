@@ -1,0 +1,47 @@
+name: cicids2018
+version: 1.0.0
+description: CIC-IDS 2018 (CSE-CIC-IDS2018) — daily flow CSVs concatenated
+
+source:
+  kind: concat_csvs
+  cached_at: raw/cicids2018/
+  url: latin-1                                 # encoding override
+
+label:
+  source_column: Label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: strip_column_whitespace
+  - op: filter_rows_label_isnull
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: c637461fa1a7b276beb70c43da90676338cc5864f63deecdb26f40c697223828
+  test.csv: d83d59ed2e7962607ae53e9be8f2f32a34d6847d3c565cd19bbfcee049890e18
+  train.csv: a04a1d9969140d86cc723762a39fba97a9e5491a37e82edb26c3b9dfe802cbfc

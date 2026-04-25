@@ -1,0 +1,58 @@
+name: edge_iiot
+version: 1.0.0
+description: Edge-IIoTSet (industrial IoT attack flows)
+
+source:
+  kind: url
+  url: "https://www.kaggle.com/datasets/mohamedamineferrag/edgeiiotset-cyber-security-dataset-of-iot-iiot"
+  cached_at: raw/edge_iiotset/ml_edgeiiot.csv
+
+label:
+  source_column: Attack_type
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: drop_columns
+    columns:
+      - frame.time
+      - arp.src.proto_ipv4
+      - arp.dst.proto_ipv4
+      - icmp.transmit_timestamp
+      - mqtt.msg
+      - http.file_data
+      - http.request.full_uri
+      - http.request.uri.query
+      - tcp.payload
+      - tcp.options
+      - Attack_label
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: d456fb929f7146dcc70ba51fe30bb18ec6a132d02ef93a99401da35996d9efc0
+  test.csv: a73c08b63bcc73bfdf0b75a3f6d9e6b32ff594d97bcbabfda3dd7d0e0faccf98
+  train.csv: d41c5d903fbb58cbf3427cdfbce6152f170127cdc0ae1d584e7d6e0bd7181ab6

@@ -12,6 +12,7 @@ from tabprep.core.pipeline import run_pipeline
 from tabprep.core.profile import load_profile
 
 DEFAULT_OUTPUT_ROOT = Path("../processed")          # relative to cnNFST/data/tabprep/
+DEFAULT_DATA_ROOT = Path("..")                       # ditto — points at cnNFST/data/
 DEFAULT_BUILTIN_DIR = Path(__file__).parent.parent / "profiles" / "builtin"
 
 
@@ -39,8 +40,16 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_prepare(args: argparse.Namespace) -> int:
     profile = load_profile(args.profile)
     out_root = Path(args.output_root).expanduser()
+    data_root = Path(args.data_root).expanduser()
+    # Resolve relative cached_at paths against --data-root.
+    if profile.source.cached_at:
+        cached = Path(profile.source.cached_at)
+        if not cached.is_absolute():
+            profile.source.cached_at = str((data_root / cached).resolve())
     print(f"[tabprep] prepare {profile.name} v{profile.version}")
     print(f"          source: kind={profile.source.kind} name={profile.source.name}")
+    if profile.source.cached_at:
+        print(f"          cached_at: {profile.source.cached_at}")
     print(f"          output: {out_root.resolve() / profile.name}")
     summary = run_pipeline(profile, output_root=out_root)
 
@@ -123,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
     p_prep.add_argument("--profile", required=True, help="Path to a profile YAML.")
     p_prep.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT),
                         help=f"Where to write outputs (default: {DEFAULT_OUTPUT_ROOT}).")
+    p_prep.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT),
+                        help=f"Root for relative source `cached_at` paths "
+                             f"(default: {DEFAULT_DATA_ROOT}).")
     p_prep.set_defaults(func=cmd_prepare)
 
     p_ver = sub.add_parser("verify", help="Verify a previous prepare run "

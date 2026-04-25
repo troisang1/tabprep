@@ -1,0 +1,50 @@
+name: ton_iot
+version: 1.0.0
+description: ToN-IoT network attack flows, multi-class
+
+source:
+  kind: url
+  url: "https://research.unsw.edu.au/projects/toniot-datasets"
+  cached_at: raw/ton_iot/train_test/train_test_network.csv
+  # sha256 left blank — fill in once a stable upstream snapshot is identified.
+
+label:
+  source_column: type
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  # Note: the original binary `label` column is dropped automatically
+  # when the `type` column is renamed to `label` (see rename_label op).
+  - op: drop_constant_prefix_columns
+    prefixes: [dns_, ssl_, http_, weird_]
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: 96d1c7682880b9458d1739b0c36dddcda650d7142a6200563fb0b4e0cad4a71f
+  test.csv: 0abba3e39f3084790884a608f7b06f983b4189f2f12a0a0e7a0fdfceb7e0ca7c
+  train.csv: 355db9015f140fbb6a1f977a780e6951e758fd9a3e1f5400089182d35de9d263

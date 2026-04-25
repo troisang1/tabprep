@@ -75,3 +75,46 @@ def coerce_numeric(df: pd.DataFrame, *, label_col: str) -> pd.DataFrame:
         if out[c].dtype == object:
             out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
+
+
+@op("drop_constant_prefix_columns")
+def drop_constant_prefix_columns(df: pd.DataFrame, *, label_col: str,
+                                 prefixes: list[str]) -> pd.DataFrame:
+    """Drop columns whose name starts with any of `prefixes` AND that are
+    constant (single unique value). Common in IDS feeds like ToN-IoT
+    where many ssl_/dns_/http_/weird_ columns are sentinel "-" only.
+    """
+    if not prefixes:
+        return df
+    drop = []
+    for c in df.columns:
+        if c == label_col:
+            continue
+        if any(c.startswith(p) for p in prefixes) and df[c].nunique(dropna=True) <= 1:
+            drop.append(c)
+    return df.drop(columns=drop) if drop else df
+
+
+@op("strip_column_whitespace")
+def strip_column_whitespace(df: pd.DataFrame, *, label_col: str) -> pd.DataFrame:
+    """Strip leading/trailing whitespace from column names. Common in
+    CICIDS-style CSVs where columns are exported as ' Label', ' Flow ID', etc.
+    """
+    return df.rename(columns={c: c.strip() for c in df.columns})
+
+
+@op("rename_columns")
+def rename_columns(df: pd.DataFrame, *, label_col: str,
+                   mapping: dict[str, str]) -> pd.DataFrame:
+    """Rename columns according to an explicit `mapping: {old: new}` dict."""
+    return df.rename(columns=mapping or {})
+
+
+@op("filter_rows_label_isnull")
+def filter_rows_label_isnull(df: pd.DataFrame, *, label_col: str) -> pd.DataFrame:
+    """Drop rows where the label is NaN, empty string, or the literal 'nan'."""
+    if label_col not in df.columns:
+        return df
+    s = df[label_col].astype(str)
+    mask = s.notna() & (s != "") & (s.str.lower() != "nan")
+    return df[mask].reset_index(drop=True)

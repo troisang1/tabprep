@@ -1,0 +1,50 @@
+name: unsw_nb15
+version: 1.0.0
+description: UNSW-NB15 network intrusion (multi-class via attack_cat)
+
+source:
+  kind: concat_csvs
+  cached_at: raw/unsw_nb15/
+  url: latin-1                                 # encoding override (see concat_csvs source)
+
+label:
+  source_column: attack_cat
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  # Note: the original binary `label` column is dropped automatically
+  # when `attack_cat` is renamed to `label` (see rename_label op).
+  - op: drop_columns
+    columns: [id]
+  - op: filter_rows_label_isnull
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: fc293e65a90e7e7c6ae83cca07b404e5ec95b264d1567e456bd2ce863cd484e4
+  test.csv: 650b04251b22a12a5ea236d7be78c20c36393570e5833885f8ca96fd7b153d71
+  train.csv: b6620fe39d6c86b0331593babb8bb16cd75cca9fef6c8f4ebe8504a9273bfeaf

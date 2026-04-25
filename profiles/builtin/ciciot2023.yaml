@@ -1,0 +1,49 @@
+name: ciciot2023
+version: 1.0.0
+description: CIC-IoT-2023 (per-device flow CSVs concatenated)
+
+source:
+  kind: concat_csvs
+  cached_at: raw/ciciot2023/
+
+label:
+  source_column: label
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: strip_column_whitespace
+  - op: filter_rows_label_isnull
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+  - op: balanced_subsample
+    max_total: 1000000                         # cap at 1M rows for tractability
+    seed: 42
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: e3f2ac302cf858ef063f7d3494630c1ff9602a9b32b6f4692b296c84016a3c63
+  test.csv: 502938ed8453b4aae9483f4083d861c0c24c595c6650d2df0acb5eb3715d0152
+  train.csv: 880f67836ae03b4489e9482cc4b7bce268abe2a411ec91732864e471b2d5c9f3

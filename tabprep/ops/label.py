@@ -9,12 +9,21 @@ from tabprep.ops._registry import op
 @op("rename_label")
 def rename_label(df: pd.DataFrame, *, label_col: str,
                  source_column: str, rename_to: str = "label") -> pd.DataFrame:
-    """Rename `source_column` to `rename_to` (default 'label')."""
+    """Rename `source_column` to `rename_to` (default 'label').
+
+    If a column named `rename_to` already exists in the dataframe (a
+    common case in IDS data: e.g. ToN-IoT has both a binary `label`
+    column AND a multi-class `type` column), the pre-existing column is
+    dropped first so the rename does not produce a duplicate column.
+    """
     if source_column == rename_to:
         return df
     if source_column not in df.columns:
         raise KeyError(f"rename_label: source_column {source_column!r} not in dataframe")
-    return df.rename(columns={source_column: rename_to})
+    out = df
+    if rename_to in out.columns and rename_to != source_column:
+        out = out.drop(columns=[rename_to])
+    return out.rename(columns={source_column: rename_to})
 
 
 @op("normalize_label_string")

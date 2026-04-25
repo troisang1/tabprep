@@ -1,0 +1,44 @@
+name: nbaiot
+version: 1.0.0
+description: N-BaIoT IoT botnet traffic (per-attack-family CSVs, label from filename)
+
+source:
+  kind: nbaiot_dir
+  cached_at: raw/nbaiot/
+
+label:
+  source_column: label                         # set by the source loader
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: drop_ip_columns
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: drop_high_nan_columns
+    threshold: 0.8
+  - op: fill_nan
+    value: 0
+  - op: filter_min_class_count
+    min_count: 50
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  calibration.csv: e379c5e61ef2846b2757c3154d8791add2baf2327cd6c83905e3c26aac0ee6e9
+  test.csv: 179be6c700c856666518df8ff85adfcfedb9f82f03827a57799c5177ae113096
+  train.csv: 4c320ab3eeb8a626df76a29c181bee1b1b55d383cba4ad0130b634ed1a621ee8
