@@ -3,9 +3,17 @@ version: 1.0.0
 description: Edge-IIoTSet (industrial IoT attack flows)
 
 source:
-  kind: url
-  url: "https://www.kaggle.com/datasets/mohamedamineferrag/edgeiiotset-cyber-security-dataset-of-iot-iiot"
-  cached_at: raw/edge_iiotset/ml_edgeiiot.csv
+  kind: concat_csvs                            # changed from `url` so the
+                                               # cached_at is a directory
+                                               # (auto-download via download_url
+                                               # extracts into a directory).
+  cached_at: raw/edge_iiotset/
+  # Edge-IIoTSet's official Mendeley/Kaggle distribution requires JS-
+  # rendered or login-gated downloads. The HuggingFace mirror at
+  # `Sunayanajagadesh/ML_EdgeIIoT_dataset` carries the canonical
+  # `ml_edgeiiot.csv` (82 MB) — same content as the original, just
+  # renamed to `ML-EdgeIIoT-dataset.csv` upstream.
+  download_url: https://huggingface.co/datasets/Sunayanajagadesh/ML_EdgeIIoT_dataset/resolve/main/ML-EdgeIIoT-dataset.csv
 
 label:
   source_column: Attack_type

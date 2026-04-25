@@ -6,6 +6,90 @@
 
 ---
 
+## 2026-04-25 — deeper search: AWS S3, HuggingFace, official-source pivot
+
+### User-direction shift
+
+After the Zenodo investigation, the user asked me to "search deeply"
+for sources, prioritising **official upstream paths first** (including
+auto-filling licence forms where possible) and only falling back to
+alternative mirrors when the official path is unfeasible. Plus skip
+pcap files to save bandwidth.
+
+### What I found
+
+**`cicids2018` — official AWS S3 (no form, no auth):**
+UNB CIC's landing page directs users to a public AWS S3 bucket:
+`s3://cse-cic-ids2018/`. Listable + downloadable without credentials.
+Skipping the `Original Network Traffic and Log data/` (pcap.zip ~44 GB
+per day), I added the 10 processed CSVs in
+`Processed Traffic Data for ML Algorithms/` (~3 GB total) as
+`download_urls`. The user's existing pre-staged renamed files
+(`02-14-2018.csv` etc.) are **byte-identical** to the S3 originals —
+sizes match exactly across all 10 files.
+
+**`edge_iiot` — HuggingFace mirror (Mendeley official is JS-gated):**
+`Sunayanajagadesh/ML_EdgeIIoT_dataset` carries the canonical
+`ml_edgeiiot.csv` (82 MB) under the renamed key
+`ML-EdgeIIoT-dataset.csv`. Profile changed from `kind: url` →
+`kind: concat_csvs` (so `cached_at` becomes a directory, which the
+auto-download path needs).
+
+  Real-run validated: backed up + deleted user's `raw/edge_iiotset/`,
+  ran `tabprep prepare --profile edge_iiot`, auto-fetched 78 MiB from
+  HuggingFace, **`expected_hashes match — fully reproduced`** ✅
+
+**Findings on `ton_iot` and `bot_iot` (UNSW SharePoint):**
+The UNSW research portal pages link to per-author SharePoint folder
+URLs (e.g. `unsw-my.sharepoint.com/:f:/g/personal/<userid>/...`).
+These URLs work in browsers (cookie-bound session) but return HTTP 403
+for any direct HTTP request. SharePoint authentication is session-
+only — auto-download not feasible without a Microsoft Graph API token,
+which would require per-user credentials.
+
+  Workaround for `bot_iot`: the OpenML mirror id 42072 (`bot-iot-all-features`)
+  remains the auto-download source — already pinned in the profile.
+
+**Findings on `5g_nidd`, `ciciot2023`, `cic_ddos2019`, `cic_iomt2024`:**
+No public mirror found across AWS Open Data, Zenodo, HuggingFace,
+Kaggle (unauth), GitHub (unauth). UNB CIC's S3 registry contains
+**only `cse-cic-ids2018`** — none of the others. Their official
+distribution remains form-gated (CIC) or dead-mirror (5g_nidd
+research.aalto.fi 404).
+
+  These four still require manual download to `raw/<name>/` for now.
+
+### Net result this commit
+
+| Profile | Auto-download status |
+|---|---|
+| `cicids2018` | ✅ AWS S3 official (10 processed CSVs, ~3 GB) |
+| `edge_iiot` | ✅ HuggingFace mirror (one CSV, 82 MB) — validated end-to-end |
+
+### CIC AWS S3 vs the rest of CIC family
+
+UNB seems to have published only `cse-cic-ids2018` to AWS Open Data;
+the newer datasets (CIC-IoT-2023, CIC-DDoS-2019, CIC-IoMT-2024,
+CIC-APT-IIoT-2024) are not on AWS S3 and have no listed alternative
+mirror. `https://registry.opendata.aws/sitemap.txt` confirms
+only `cse-cic-ids2018` from the CIC family.
+
+### Auto-form-fill: not applicable here
+
+The user asked about auto-filling the licence form. After fetching
+the CIC-IDS-2018 landing page, I confirmed there is **no form** —
+UNB explicitly distributes via the AWS S3 command-line. So no
+auto-fill is needed for cicids2018. The CIC datasets that ARE
+form-gated (cic_apt_iiot, cic_ddos2019, cic_iomt2024, ciciot2023)
+return their downloads via **email-with-token** rather than HTTP
+response — auto-extracting that token would require IMAP/SMTP
+integration, far out of scope. The placeholder `_submit_consent_form`
+helper from earlier is therefore not invoked for any shipped profile;
+it's available for future profiles where the upstream form does
+return a direct HTTP redirect to the file.
+
+---
+
 ## 2026-04-25 — Zenodo mirror for unsw_nb15 + full investigation results
 
 ### unsw_nb15 ✅ now auto-downloads from Zenodo
