@@ -6,6 +6,71 @@
 
 ---
 
+## 2026-04-25 — Zenodo mirror for unsw_nb15 + full investigation results
+
+### unsw_nb15 ✅ now auto-downloads from Zenodo
+
+Found the original UNSW-NB15 distribution on Zenodo record 10140548:
+all 4 official CSVs (`UNSW-NB15_1.csv` through `_4.csv`, ~588 MB
+total). Added them as `download_urls` in the v0.4 profile.
+
+Real-run validation:
+1. Backed up + deleted user's existing `raw/unsw_nb15/`
+2. `tabprep prepare --profile unsw_nb15` triggered auto-fetch of all
+   4 Zenodo URLs (~588 MB total, ~3 minutes on a residential link)
+3. `concat_csvs` source loader picked up the 4 CSVs
+4. Pipeline ran end-to-end
+5. **`verify --profile unsw_nb15` → all 3 files match the pinned
+   `expected_hashes`** ✅
+
+The user's pre-existing raw also had `UNSW_NB15_training-set.csv`,
+`UNSW_NB15_testing-set.csv`, `NUSW-NB15_features.csv`, and
+`UNSW-NB15_LIST_EVENTS.csv` (auxiliary files), but the byte-identical
+output proves `concat_csvs` was only reading the 4 main CSVs anyway —
+the auxiliary files are skipped (likely schema-mismatch).
+
+### Investigation results for the remaining 7 v0.4 IDS profiles
+
+Searched Zenodo, IEEE DataPort, HuggingFace, Kaggle, GitHub, and
+provider home pages for each.
+
+| Profile | Public mirror found? | Why not implemented |
+|---|---|---|
+| `ton_iot` | ✅ Zenodo 19367312 (`Ton_Iot.zip`, 181 MB) | The zip is the full ToN-IoT distribution; our profile only uses `train_test/train_test_network.csv` (30 MB). Extracting just one file from the zip needs a custom downloader; out of scope for this commit. |
+| `5g_nidd` | ❌ no public mirror | UCD NetsLab page only links the paper figures; Aalto research portal returns 404; IEEE DataPort requires subscription. |
+| `edge_iiot` | ⚠️ derived versions on Zenodo (`edge_iiot_multiclass.csv` at record 8035724) | Different schema than original; would need a separate profile. Original is on Mendeley/Kaggle (gated). |
+| `cicids2018` | ❌ no working mirror | UNB CIC 2025 lockdown; no Zenodo mirror found. |
+| `ciciot2023` | ⚠️ subsamples on Zenodo (~25 MB) | Subsample only; full distribution gated. |
+| `cic_ddos2019` | ❌ no working mirror | UNB CIC 2025 lockdown. |
+| `cic_iomt2024` | ❌ no working mirror | UNB CIC 2025 lockdown. |
+
+### Net result this commit
+
+- 1 dataset migrated from "manual-only" to **auto-download**: `unsw_nb15`
+  (concat_csvs → Zenodo CSVs).
+- Added in previous commits: `nbaiot` (UCI archive) was the other
+  v0.4 dataset to gain auto-download.
+- 7 datasets still require manual download. Their landing-page URLs
+  in the profile YAMLs serve as the user's pointer; future Phase 4
+  work will migrate them to v0.5 `FormGatedDownloader` for a cleaner
+  refusal UX.
+
+### What was NOT implemented this commit
+
+- **5% subset sampling** for fast prepare iteration. The user
+  asked for this. None of the existing legacy v0.4 source loaders
+  honour a `loader_options.max_rows` flag; threading one through
+  would touch `concat_csvs_source.py`, `nbaiot_dir_source.py`, and
+  `url_source.py`. Out of scope for this commit; a separate
+  `--sample-fraction` CLI flag would be the cleanest place to put it.
+- **`ton_iot` zip-subset extraction** — would need a custom v0.5
+  downloader that extracts only `train_test/train_test_network.csv`
+  from Zenodo's full Ton_Iot.zip. Tractable but mechanically heavy.
+- **FormGated migration** for the 6 truly-gated profiles — Phase 4
+  work, not started.
+
+---
+
 ## 2026-04-25 — full URL validation matrix (all 22 profiles)
 
 ### Status of every dataset profile

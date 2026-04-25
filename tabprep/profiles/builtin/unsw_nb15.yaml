@@ -6,6 +6,14 @@ source:
   kind: concat_csvs
   cached_at: raw/unsw_nb15/
   url: latin-1                                 # encoding override (see concat_csvs source)
+  # The original UNSW-NB15 distribution is mirrored on Zenodo (record
+  # 10140548). Four CSVs totaling ~588 MB. Auto-fetched via the v0.4
+  # download_urls path; concat_csvs then reads them.
+  download_urls:
+    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_1.csv/content
+    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_2.csv/content
+    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_3.csv/content
+    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_4.csv/content
 
 label:
   source_column: attack_cat
