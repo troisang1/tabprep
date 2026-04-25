@@ -1,0 +1,36 @@
+# Build artefacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.tox/
+build/
+dist/
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output of `tabprep prepare` runs (these are reproducible from profiles
+# + framework version, so we never check them in)
+prepared/
+*.csv.processed
+_manifest.json
+
+# Local user profiles (users add their own under profiles/user/, which is
+# not tracked — only the built-in reference profiles ship with the repo)
+profiles/user/

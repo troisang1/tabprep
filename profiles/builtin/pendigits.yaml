@@ -1,0 +1,34 @@
+name: pendigits
+version: 1.0.0
+description: Pen-based handwritten digits (10 classes, 16 features)
+
+source:
+  kind: openml
+  name: pendigits
+
+label:
+  source_column: label                  # set by the openml source loader
+  rename_to: label
+  normalize: lowercase_underscore
+
+pipeline:
+  - op: filter_min_class_count
+    min_count: 50
+
+split:
+  kind: stratified_class_balanced
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
+  seed: 42
+
+output:
+  format: csv
+  precision: 6
+  column_sort: alphabetical
+  row_shuffle_seed: 42
+
+expected_hashes:
+  train.csv:        9ae564e7a24ba246d3d44a40f6f5b168625ec74f544c5c51c14203fe83d7703f
+  calibration.csv:  d8d7a0f311622da149a3779157db2efa58dc69cfcd8cee40ac7ea38f46711c8c
+  test.csv:         207cb2a37b9d0a9e2d6770f07df07e7b56c508e0138244d911f8fac712372c1e
