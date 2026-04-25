@@ -6,9 +6,11 @@ description: |
   → delivery → exploitation → installation → C2 → actions). Newest CIC
   release; complements CIC-IDS2018 (enterprise) and CIC-IoT-2023 (consumer IoT).
 
-  Licence consent: requires `TABPREP_USER_*` env vars to identify
-  yourself to UNB CIC's request form. See
-  `tabprep/datasets/cic_apt_iiot/README.md`.
+  Form-gated: UNB CIC restructured its hosting in 2025; direct mirror
+  URLs no longer work. The user must visit the landing page, request
+  the dataset via the form (UNB returns a one-time download token by
+  email), and place the resulting zip under `raw/cic_apt_iiot/`
+  before running prepare. See `tabprep/datasets/cic_apt_iiot/README.md`.
 
 downloader: cic_apt_iiot
 loader: cic_apt_iiot

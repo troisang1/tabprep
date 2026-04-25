@@ -1,9 +1,17 @@
 # CIC-APT-IIoT-2024
 
-**Source.** [UNB CIC — CIC-APT-IIoT-2024 landing page](https://www.unb.ca/cic/datasets/cic-apt-iiot-2024.html)
+**Source.** [UNB CIC — IIoT Dataset 2024 landing page](https://www.unb.ca/cic/datasets/iiot-dataset-2024.html)
 **Citation.** UNB Canadian Institute for Cybersecurity, 2024 release. Please cite per the landing page.
 **Licence.** CC-BY 4.0 (per UNB CIC standard terms).
-**Direct download.** `http://cicresearch.ca/IOTDataset/CIC-APT-IIoT-2024/Dataset/CIC-APT-IIoT-2024.zip`
+**Distribution.** Form-gated: visit the landing page, complete the request form, UNB returns a one-time download token by email.
+
+> **History.** UNB CIC restructured its hosting in 2025: the IP-based
+> mirror at `cicresearch.ca` / `205.174.165.80` no longer serves
+> direct download URLs (every request redirects to the landing
+> index). Datasets are now distributed via per-request tokens. The
+> framework's `cic_apt_iiot` downloader is therefore a polite
+> refusal pointing the user at the landing page — auto-fetching
+> isn't feasible.
 
 ## Licence consent
 

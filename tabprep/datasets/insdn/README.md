@@ -1,9 +1,24 @@
 # InSDN
 
-**Source.** [Mendeley Data — InSDN dataset](https://data.mendeley.com/datasets/jxpfjc64kr)
+**Source.** [Mendeley Data — InSDN dataset (DOI 10.17632/jxpfjc64kr.1)](https://data.mendeley.com/datasets/jxpfjc64kr/1)
 **Citation.** Elsayed, Le-Khac & Jurcut (2020). *InSDN: A Novel SDN Intrusion Dataset*.
 **Licence.** CC-BY 4.0
-**Direct downloads.** Mendeley per-file URLs (subject to rotation — see below).
+**Distribution.** Form-gated: per-file URLs are JS-rendered on the Mendeley page and rotate per browser session, so direct HTTP fetching by URL isn't feasible.
+
+> **How to populate `raw/insdn/`:**
+>
+> 1. Visit the landing page and accept the CC-BY 4.0 licence.
+> 2. Click "Download All" — Mendeley delivers a zip with the three
+>    canonical CSVs (`Normal_data.csv`, `metasploitable-2.csv`,
+>    `OVS.csv`).
+> 3. Extract the zip into `raw/insdn/` and run
+>    `tabprep prepare --profile insdn`.
+>
+> Alternative: the Kaggle mirror at
+> `badcodebuilder/insdn-dataset` provides the same files if you have
+> Kaggle API credentials configured (`~/.kaggle/kaggle.json`); the
+> framework doesn't currently auto-fetch from Kaggle, but a future
+> downloader could.
 
 ## Why this profile exists
 

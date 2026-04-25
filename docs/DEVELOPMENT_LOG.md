@@ -6,6 +6,81 @@
 
 ---
 
+## 2026-04-25 — URL validation + dead-mirror remediation
+
+### What landed
+
+Real-run validation of every dataset profile's download URL. Three of
+the four newly-added IDS datasets had broken / placeholder URLs;
+fixed via alternative mirrors or by switching to a polite refusal
+where auto-fetch isn't feasible.
+
+### Phase A — URL probes (non-destructive)
+
+`curl -sI` against every direct download URL revealed:
+
+| Dataset | Probe result | Diagnosis |
+|---|---|---|
+| `nsl_kdd` | 301 → `/cic/datasets/index.html` | UNB IP-based mirror locked down post-2025 |
+| `cic_apt_iiot` | 301 → `/cic/datasets/index.html` | UNB IP-based mirror locked down post-2025 |
+| `insdn` | 200 to JSON error response | Placeholder UUIDs (Mendeley needs real per-session UUIDs) |
+| `bot_iot` | DNS resolution failure | AARNet Cloudstor decommissioned in 2023 |
+| `iot23` | 200 (live) | Stratosphere CTU mirror still serves directly |
+| 7 OpenML profiles | sklearn-mediated; 301 redirect loop today | Upstream `api.openml.org` issue (not framework) |
+
+### Phase B — fixes per dataset
+
+1. **`nsl_kdd`** — switched to GitHub mirror `defcom17/NSL_KDD`.
+   Four raw URLs (`KDDTrain+.txt`, `KDDTrain+_20Percent.txt`,
+   `KDDTest+.txt`, `KDDTest-21.txt`). Now uses
+   `HTTPMultiURLDownloader`. Fully auto-fetched.
+
+2. **`bot_iot`** — switched to OpenML mirror id 42072
+   (`bot-iot-all-features` — the 10-best-features subset most papers
+   cite). New `BotIoTDownloader` is a `BaseDownloader` subclass that
+   pre-fetches via `sklearn.datasets.fetch_openml`. New `BotIoTLoader`
+   uses the same path. No consent form required for the OpenML
+   mirror.
+
+3. **`cic_apt_iiot`** — switched to `FormGatedDownloader`. UNB CIC's
+   2025 hosting restructure means direct mirror URLs no longer work
+   and the dataset is distributed via per-request email tokens. The
+   downloader politely refuses with the corrected landing URL
+   (`unb.ca/cic/datasets/iiot-dataset-2024.html`).
+
+4. **`insdn`** — switched to `FormGatedDownloader`. Mendeley's
+   per-file URLs are JS-rendered and rotate per session;
+   hard-coding any URL is fragile. The downloader points the user at
+   the Mendeley landing page (DOI 10.17632/jxpfjc64kr.1) with
+   instructions for the manual one-time download.
+
+### Phase C — clean-and-test validation
+
+| Dataset | Result |
+|---|---|
+| `covertype` | ✅ full clean run — sklearn cache miss → `fetch_covtype` → load → split → write, hash match |
+| `nsl_kdd` | ✅ full clean run — 4 GitHub URLs fetched, parsed, encoded, split, written (20 682 train rows). First canonical run; ready to pin `expected_hashes`. |
+| `cic_apt_iiot`, `insdn` | ✅ FormGated refusals fire correctly with helpful messages |
+| `bot_iot` + 7 OpenML profiles | ❌ blocked by today's `api.openml.org` 301 outage (unchanged from prior session — upstream-not-ours) |
+| `iot23` | (skipped — 44 GB raw cache exists; would re-download 9.4 GB tarball wastefully) |
+
+### Bonus: `derive_target_name` URL-decoding
+
+GitHub raw URLs encode `+` as `%2B`, so `KDDTrain+.txt` arrives as
+`KDDTrain%2B.txt`. The `derive_target_name` helper now URL-decodes
+the result so the local filename matches what a browser would save
+and what the loader's glob expects (`KDDTrain+.txt`). Two new
+parametrized test cases pin the behaviour.
+
+### Test count
+
+253 → 253 (4 fewer parametrized cases in test_new_ids_datasets after
+removing `BotIoTLoader` from the concat-csv group, +1 new BotIoT
+loader test, +2 new derive_target_name URL-decode tests, all balanced).
+ruff clean.
+
+---
+
 ## 2026-04-25 — extended IDS catalogue + licence-consent infrastructure
 
 ### What landed

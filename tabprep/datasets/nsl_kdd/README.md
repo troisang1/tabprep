@@ -1,9 +1,16 @@
 # NSL-KDD
 
-**Source.** [UNB CIC — NSL-KDD landing page](https://www.unb.ca/cic/datasets/nsl.html)
+**Source.** [GitHub mirror — `defcom17/NSL_KDD`](https://github.com/defcom17/NSL_KDD)
 **Citation.** Tavallaee, Bagheri, Lu & Ghorbani (2009). *A Detailed Analysis of the KDD CUP 99 Data Set*.
-**Licence.** Open access via the UNB CIC mirror; please cite the paper above.
-**Direct download.** `http://205.174.165.80/CICDataset/NSL-KDD/Dataset/NSL-KDD.zip` — auto-fetched.
+**Licence.** Open access; please cite the paper above.
+**Direct downloads.** Four GitHub raw URLs (auto-fetched, ~25 MB total).
+
+> **History.** UNB CIC's IP-based mirror at `205.174.165.80` /
+> `cicresearch.ca` was the canonical distribution for NSL-KDD until
+> ~2025, when UNB locked down direct download paths (every URL on
+> those mirrors now redirects to the landing index). The
+> well-maintained GitHub mirror is the de-facto canonical source as
+> of 2026 and is what this profile fetches from.
 
 ## Why this profile exists
 

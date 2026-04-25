@@ -3,17 +3,20 @@ version: 1.0.0
 description: |
   Bot-IoT (Koroniotis et al., 2018) — UNSW Canberra IoT botnet flows.
   One of the most-cited IoT IDS datasets. Multi-class taxonomy
-  (DDoS / DoS / OS-fingerprint / Service-scan / Theft / Recon / Normal).
-  Default ships the 10-best-features subset (~70 MB) for CI-friendliness.
+  (DDoS / DoS / Reconnaissance / Theft / Normal).
 
-  Licence consent: requires `TABPREP_USER_*` env vars to identify
-  yourself to UNSW Bot-IoT's licence form. See
-  `tabprep/datasets/bot_iot/README.md`.
+  AARNet's Cloudstor host (where UNSW originally distributed Bot-IoT)
+  was decommissioned in 2023; this profile uses the OpenML mirror
+  (id 42072, `bot-iot-all-features`) which is the 10-best-features
+  subset most papers cite. No consent form required for the OpenML
+  mirror.
 
 downloader: bot_iot
 loader: bot_iot
 cached_at: raw/bot_iot/
-loader_options: {}
+loader_options:
+  openml_name: bot-iot-all-features
+  openml_version: 1
 
 label:
   source_column: category
@@ -21,10 +24,9 @@ label:
   normalize: lowercase_underscore
 
 pipeline:
-  - op: drop_columns
-    columns: [pkSeqID, attack, subcategory]   # binary `attack` and fine `subcategory` redundant with `category`
-  - op: drop_ip_columns
-  - op: encode_categoricals
+  - op: encode_categoricals      # the OpenML mirror has been pre-cleaned;
+                                 # category is the only non-numeric column
+                                 # we'd encode (it's the label so it's skipped).
     max_cardinality: 50
     method: onehot
   - op: coerce_numeric

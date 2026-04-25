@@ -1,9 +1,18 @@
 # Bot-IoT
 
-**Source.** [UNSW Canberra — Bot-IoT dataset](https://research.unsw.edu.au/projects/bot-iot-dataset)
+**Source.** [OpenML id 42072 (`bot-iot-all-features`)](https://www.openml.org/d/42072) — mirror of UNSW's 10-best-features distribution.
 **Citation.** Koroniotis, Moustafa, Sitnikova & Turnbull (2018). *Towards the Development of Realistic Botnet Dataset in the IoT*.
 **Licence.** Research-use only (UNSW academic licence) — please cite the paper.
-**Direct download.** AARNet Cloudstor (`cloudstor.aarnet.edu.au`).
+**Auto-fetch.** Via `sklearn.datasets.fetch_openml('bot-iot-all-features', version=1)`.
+
+> **History.** UNSW Canberra originally distributed Bot-IoT through
+> AARNet Cloudstor (`cloudstor.aarnet.edu.au`). AARNet decommissioned
+> Cloudstor in 2023; that host no longer resolves. The OpenML mirror
+> is the most accessible scriptable source for the canonical
+> 10-best-features subset (the same one cited in most published
+> Bot-IoT replications). For the full ~16.7 GB pcap+argus+csv
+> distribution, visit the UNSW landing page above and request access
+> via their Microsoft Forms application.
 
 ## Why this profile exists
 

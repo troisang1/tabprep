@@ -6,8 +6,10 @@ description: |
   exploits / OVS controller-plane attacks). SDN-specific features
   (OpenFlow, flow-table entries) absent from conventional NIDS feeds.
 
-  Licence consent: requires `TABPREP_USER_*` env vars to identify
-  yourself to Mendeley Data's licence form. See
+  Form-gated: Mendeley's per-file URLs are JS-rendered and rotate per
+  session. The user must visit the landing page, accept the CC-BY 4.0
+  licence, click "Download All", and place the resulting zip under
+  `raw/insdn/` before running prepare. See
   `tabprep/datasets/insdn/README.md`.
 
 downloader: insdn

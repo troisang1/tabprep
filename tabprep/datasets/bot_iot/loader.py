@@ -1,18 +1,20 @@
-"""Bot-IoT loader: concat the per-attack-family CSVs.
+"""Bot-IoT loader: fetches the OpenML mirror via sklearn.fetch_openml.
 
-The Bot-IoT distribution ships several CSVs partitioned by attack
-family (DDoS, DoS, OS-fingerprint, Service, Theft, Recon, Normal).
-The "10-best-features" subset is a single CSV; the full distribution
-is ~74 CSVs. Both layouts are handled by the same recursive
-`*.csv` walk + concat.
+Bot-IoT's authoritative distribution is the OpenML mirror (id 42072,
+`bot-iot-all-features`) since the original AARNet Cloudstor host was
+decommissioned in 2023. This loader uses sklearn's OpenML proxy —
+parallel to `OpenMLLoader` but with the dataset name pinned in code
+(matches the `BotIoTDownloader.OPENML_NAME` attribute).
 
-Each row carries:
-  category   — coarse class (DDoS / DoS / Reconnaissance / Theft / Normal)
-  subcategory — fine class (HTTP, TCP, UDP, OS_Fingerprint, …)
-  attack     — binary label (1 = attack, 0 = benign)
+The `bot-iot-all-features` mirror is the **10-best-features** subset
+(3.6M rows × 10 numeric features). The label column is `category`
+(coarse multi-class: DDoS / DoS / Reconnaissance / Theft / Normal).
+The fine-grained `subcategory` and binary `attack` columns are also
+present in the upstream distribution but not in this OpenML mirror.
 
-Profile authors typically use `category` as the multi-class target;
-`attack` is appropriate for binary tasks.
+`raw_dir` is unused — sklearn caches under `~/scikit_learn_data/`.
+The `_complete` marker written by `BotIoTDownloader.download` lets
+the framework's idempotency check work consistently.
 """
 from __future__ import annotations
 
@@ -26,36 +28,37 @@ from tabprep.datasets._base import BaseLoader, loader
 
 @loader("bot_iot")
 class BotIoTLoader(BaseLoader):
-    """Reader for Bot-IoT per-attack-family CSVs.
+    """Reader for the Bot-IoT 10-best-features OpenML mirror.
 
     Profile usage:
       loader: bot_iot
       loader_options:
-        glob: "*.csv"          # default
+        openml_name: bot-iot-all-features    # default
+        openml_version: 1                    # default
     """
 
-    DEFAULT_GLOB: str = "*.csv"
+    DEFAULT_NAME: str = "bot-iot-all-features"
+    DEFAULT_VERSION: int = 1
 
     def load(
         self,
         raw_dir: Path,
         label_col: str,
         *,
-        glob: str | None = None,
+        openml_name: str | None = None,
+        openml_version: int | str = DEFAULT_VERSION,
         **opts: Any,
     ) -> tuple[pd.DataFrame, str]:
-        pattern = glob or self.DEFAULT_GLOB
-        files = self.recursive_glob(Path(raw_dir), (pattern,))
-        if not files:
-            raise FileNotFoundError(
-                f"bot_iot loader: no files matching {pattern!r} under {raw_dir}"
-            )
+        from sklearn.datasets import fetch_openml
 
-        parts: list[pd.DataFrame] = []
-        for f in files:
-            df = self.read_csv_with_encoding_fallback(f)
-            df = df.rename(columns={c: c.strip() for c in df.columns})
-            parts.append(df)
-
-        df = pd.concat(parts, ignore_index=True, sort=False)
+        bunch = fetch_openml(
+            openml_name or self.DEFAULT_NAME,
+            version=openml_version,
+            as_frame=True,
+            parser="auto",
+        )
+        # OpenML returns categorical targets; coerce to string for the label.
+        y = bunch.target.astype(str).reset_index(drop=True)
+        df = bunch.data.reset_index(drop=True).copy()
+        df[label_col] = y.values
         return df, label_col

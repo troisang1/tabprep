@@ -119,6 +119,11 @@ def test_has_data_recurses_into_subdirs(tmp_path):
     ("https://example.com:8080/data.csv", "data.csv"),
     # Fragment ignored.
     ("https://example.com/data.csv#section", "data.csv"),
+    # URL-encoded characters are decoded so the local filename matches
+    # what a browser would save (KDDTrain%2B.txt → KDDTrain+.txt).
+    ("https://raw.githubusercontent.com/x/y/master/KDDTrain%2B.txt",
+     "KDDTrain+.txt"),
+    ("https://example.com/path/with%20space.csv", "with space.csv"),
 ])
 def test_derive_target_name(url, expected):
     assert derive_target_name(url) == expected

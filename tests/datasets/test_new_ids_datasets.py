@@ -7,6 +7,7 @@ network call is exercised elsewhere — these tests stay offline.
 """
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from tabprep.datasets import DOWNLOADER_REGISTRY, LOADER_REGISTRY
@@ -34,39 +35,52 @@ def test_registered(name, loader_cls, downloader_cls):
 
 # ---------- nsl_kdd downloader pin ----------------------------------------
 
-def test_nsl_kdd_downloader_metadata():
-    assert NSLKDDDownloader.url.endswith(".zip")
-    assert "NSL-KDD" in NSLKDDDownloader.url
-    assert NSLKDDDownloader.archive_format == "zip"
-    assert "unb.ca" in NSLKDDDownloader.landing_url
-    # No consent form for NSL-KDD (open access).
-    assert NSLKDDDownloader.consent_form_url == ""
+def test_nsl_kdd_downloader_uses_github_mirror():
+    """UNB CIC's IP-based mirror redirects everything to a landing
+    index in 2025+, so we use the well-maintained GitHub mirror at
+    `defcom17/NSL_KDD` for the canonical .txt files."""
+    # HTTPMultiURLDownloader, four URLs (Train+ / Train+_20Percent / Test+ / Test-21).
+    assert len(NSLKDDDownloader.urls) == 4
+    for u in NSLKDDDownloader.urls:
+        assert "raw.githubusercontent.com" in u
+        assert "defcom17/NSL_KDD" in u
+        assert u.endswith(".txt")
 
 
 # ---------- cic_apt_iiot downloader pin -----------------------------------
 
-def test_cic_apt_iiot_downloader_metadata():
-    assert CICAPTIIoTDownloader.archive_format == "zip"
-    assert "CIC-APT-IIoT-2024" in CICAPTIIoTDownloader.url
-    # Has a consent form.
-    assert CICAPTIIoTDownloader.consent_form_url != ""
-    assert CICAPTIIoTDownloader.consent_form_fields["dataset"] == "CIC-APT-IIoT-2024"
+def test_cic_apt_iiot_downloader_is_form_gated():
+    """UNB CIC's 2025 restructuring took the IP-based mirror offline;
+    the dataset is now distributed via a per-request form. We mark the
+    downloader is_supported=False and refuse rather than try to scrape."""
+    assert CICAPTIIoTDownloader.is_supported is False
+    assert "iiot-dataset-2024" in CICAPTIIoTDownloader.landing_url
+    assert "request form" in CICAPTIIoTDownloader.licence_note.lower()
 
 
-# ---------- insdn / bot_iot consent attrs ---------------------------------
+# ---------- insdn downloader pin ------------------------------------------
 
-def test_insdn_has_consent_form():
-    assert InSDNDownloader.consent_form_url != ""
+def test_insdn_downloader_is_form_gated():
+    """Mendeley's per-file download URLs are JS-rendered and rotate
+    per session — not safe to hard-code. Marked form-gated; user must
+    visit the landing page and download manually."""
+    assert InSDNDownloader.is_supported is False
+    assert "mendeley.com" in InSDNDownloader.landing_url
     assert InSDNDownloader.licence_note.startswith("CC-BY")
-    assert len(InSDNDownloader.urls) >= 1
 
 
-def test_bot_iot_has_consent_form():
-    assert BotIoTDownloader.consent_form_url != ""
-    assert "UNSW" in BotIoTDownloader.licence_note or \
-           "Koroniotis" in BotIoTDownloader.licence_note
-    assert "UNSW" in BotIoTDownloader.consent_form_url or \
-           "research.unsw" in BotIoTDownloader.consent_form_url
+# ---------- bot_iot downloader pin (OpenML mirror) ------------------------
+
+def test_bot_iot_downloader_uses_openml_mirror():
+    """AARNet's Cloudstor host where UNSW originally distributed Bot-IoT
+    was decommissioned in 2023. We use the OpenML mirror (id 42072,
+    `bot-iot-all-features`) — the 10-best-features subset, no consent
+    form, scriptable."""
+    assert BotIoTDownloader.is_supported is True
+    assert BotIoTDownloader.OPENML_NAME == "bot-iot-all-features"
+    assert BotIoTDownloader.OPENML_VERSION == 1
+    assert "research.unsw.edu.au" in BotIoTDownloader.landing_url
+    assert "OpenML" in BotIoTDownloader.licence_note
 
 
 # ---------- nsl_kdd loader: synthetic KDDTrain+/Test+ ---------------------
@@ -121,7 +135,6 @@ def test_nsl_kdd_loader_raises_when_use_file_missing(tmp_path):
 @pytest.mark.parametrize("loader_cls", [
     CICAPTIIoTLoader,
     InSDNLoader,
-    BotIoTLoader,
 ])
 def test_concat_csv_loader_strips_whitespace_in_column_names(tmp_path, loader_cls):
     """The CIC family ships CSVs with leading whitespace in column
@@ -134,19 +147,45 @@ def test_concat_csv_loader_strips_whitespace_in_column_names(tmp_path, loader_cl
     assert "Label" in df.columns
 
 
-@pytest.mark.parametrize("loader_cls", [
-    CICAPTIIoTLoader, InSDNLoader, BotIoTLoader,
-])
+@pytest.mark.parametrize("loader_cls", [CICAPTIIoTLoader, InSDNLoader])
 def test_concat_csv_loader_raises_when_empty(tmp_path, loader_cls):
     with pytest.raises(FileNotFoundError, match="no files matching"):
         loader_cls().load(tmp_path, "label")
 
 
-@pytest.mark.parametrize("loader_cls", [
-    CICAPTIIoTLoader, InSDNLoader, BotIoTLoader,
-])
+@pytest.mark.parametrize("loader_cls", [CICAPTIIoTLoader, InSDNLoader])
 def test_concat_csv_loader_concatenates_multiple_files(tmp_path, loader_cls):
     (tmp_path / "a.csv").write_text("feat,Label\n1.0,benign\n2.0,attack\n")
     (tmp_path / "b.csv").write_text("feat,Label\n3.0,benign\n")
     df, _ = loader_cls().load(tmp_path, "label")
     assert len(df) == 3
+
+
+# ---------- bot_iot loader: mocked sklearn fetch_openml -------------------
+
+def test_bot_iot_loader_uses_openml(monkeypatch):
+    """BotIoTLoader fetches via sklearn.fetch_openml under the hood."""
+    import sys
+    import types
+
+    feats = pd.DataFrame({"f0": [0.1, 0.2], "f1": [3.0, 4.0]})
+    target = pd.Series(["DDoS", "Normal"])
+    bunch = types.SimpleNamespace(data=feats.copy(), target=target.copy())
+    last_call: dict = {}
+
+    def fake_fetch(name, version=1, as_frame=True, parser="auto"):
+        last_call["name"] = name
+        last_call["version"] = version
+        return bunch
+
+    sk_datasets = sys.modules.setdefault(
+        "sklearn.datasets", types.ModuleType("sklearn.datasets")
+    )
+    monkeypatch.setattr(sk_datasets, "fetch_openml", fake_fetch, raising=False)
+
+    df, label = BotIoTLoader().load("/tmp/_unused", "label")
+    assert label == "label"
+    assert "label" in df.columns
+    assert df["label"].tolist() == ["DDoS", "Normal"]
+    assert last_call["name"] == "bot-iot-all-features"
+    assert last_call["version"] == 1

@@ -1,46 +1,33 @@
-"""CIC-APT-IIoT-2024 downloader: UNB CIC mirror + licence-consent form.
+"""CIC-APT-IIoT-2024 downloader: form-gated UNB CIC distribution.
 
-UNB CIC distributes its 2024 Industrial-IoT APT dataset behind a
-licence-consent form (Google Forms). Once consented, the bundled ZIP
-is fetched from the public `cicresearch.ca` mirror.
+UNB CIC restructured its dataset hosting in 2025: the IP-based mirror
+at `cicresearch.ca` / `205.174.165.80` no longer serves direct
+download URLs (every request now redirects to the landing index page).
+Datasets are gated behind a per-request form that emails the
+researcher a one-time download token.
 
-The licence form is informational — UNB CIC tracks submissions for
-grant-reporting / bibliometric purposes but doesn't gate the URL on a
-session cookie. We auto-submit it with the user's TABPREP_USER_*
-identity (or placeholder defaults with a warning), then fetch the ZIP.
+Auto-fetching is therefore not feasible for this profile. The user
+must visit the landing page below, fill out the request form, and
+place the resulting bundle under `cached_at/` manually before running
+`tabprep prepare --profile cic_apt_iiot`.
 
-Set `TABPREP_USER_NAME`, `TABPREP_USER_EMAIL`, `TABPREP_USER_AFFILIATION`,
-and `TABPREP_USER_PURPOSE` env vars to identify yourself properly. CIC
-uses these for grant-reporting — submitting placeholder data is rude.
+If a future CIC release moves to a scriptable mirror, swap this
+class for an `HTTPArchiveDownloader` with the new URL.
 """
 from __future__ import annotations
 
 from typing import ClassVar
 
-from tabprep.datasets._base import HTTPArchiveDownloader, downloader
+from tabprep.datasets._base import FormGatedDownloader, downloader
 
 
 @downloader("cic_apt_iiot")
-class CICAPTIIoTDownloader(HTTPArchiveDownloader):
-    url: ClassVar[str] = (
-        "http://cicresearch.ca/IOTDataset/CIC-APT-IIoT-2024/Dataset/"
-        "CIC-APT-IIoT-2024.zip"
-    )
-    archive_format: ClassVar[str] = "zip"
+class CICAPTIIoTDownloader(FormGatedDownloader):
+    is_supported: ClassVar[bool] = False
     landing_url: ClassVar[str] = (
-        "https://www.unb.ca/cic/datasets/cic-apt-iiot-2024.html"
+        "https://www.unb.ca/cic/datasets/iiot-dataset-2024.html"
     )
     licence_note: ClassVar[str] = (
-        "CC-BY 4.0 — please cite the UNB CIC release paper."
+        "CC-BY 4.0 — UNB CIC request form required (returns a one-time "
+        "download token by email). Please cite the UNB CIC paper."
     )
-
-    # CIC's request form on Google Forms. The form ID rotates over
-    # time; users hitting a 404 should check the landing page above
-    # for the current URL and override via a subclass.
-    consent_form_url: ClassVar[str] = (
-        "https://docs.google.com/forms/d/e/cic-apt-iiot-2024-request/formResponse"
-    )
-    consent_form_fields: ClassVar[dict[str, str]] = {
-        "dataset": "CIC-APT-IIoT-2024",
-        "licence_accepted": "true",
-    }

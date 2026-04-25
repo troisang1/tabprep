@@ -75,18 +75,22 @@ def derive_target_name(url: str) -> str:
     falls back to the last path segment, then to `'downloaded.bin'`
     when the path itself is empty.
 
+    The returned name is URL-decoded — `KDDTrain%2B.txt` becomes
+    `KDDTrain+.txt` — so it matches what a browser would save and what
+    a downstream loader's glob pattern would expect.
+
     Earlier versions naively `.split("/")` the whole URL, which let the
     dotted hostname (`example.com`) match the "first segment with a `.`"
     rule before any path segment was inspected — so a URL with no
     extension in its path returned the host. Fixed by using
     `urllib.parse.urlparse` to scope the search to `.path`.
     """
-    from urllib.parse import urlparse
+    from urllib.parse import unquote, urlparse
     parts = [p for p in urlparse(url).path.split("/") if p]
     for part in reversed(parts):
         if "." in part:
-            return part
-    return parts[-1] if parts else "downloaded.bin"
+            return unquote(part)
+    return unquote(parts[-1]) if parts else "downloaded.bin"
 
 
 def _stream_download(url: str, dest: Path) -> str:
