@@ -7,7 +7,6 @@ network call is exercised elsewhere — these tests stay offline.
 """
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
 from tabprep.datasets import DOWNLOADER_REGISTRY, LOADER_REGISTRY
@@ -73,18 +72,21 @@ def test_insdn_downloader_uses_kaggle_mirror():
     assert InSDNDownloader.licence_note.startswith("CC-BY")
 
 
-# ---------- bot_iot downloader pin (OpenML mirror) ------------------------
+# ---------- bot_iot downloader pin (Kaggle 5%-data mirror) ----------------
 
-def test_bot_iot_downloader_uses_openml_mirror():
-    """AARNet's Cloudstor host where UNSW originally distributed Bot-IoT
-    was decommissioned in 2023. We use the OpenML mirror (id 42072,
-    `bot-iot-all-features`) — the 10-best-features subset, no consent
-    form, scriptable."""
+def test_bot_iot_downloader_uses_kaggle_mirror():
+    """AARNet's Cloudstor host was decommissioned in 2023; UNSW
+    SharePoint returns 403 to non-browser clients. Switched to the
+    Kaggle public mirror `vigneshvenkateswaran/bot-iot-5-data`
+    (CC-BY, ~57 MB ZIP, full 46-column schema with `category` label).
+    OpenML id 42072 was the previous mirror but it ships only the
+    10-best-features projection."""
     assert BotIoTDownloader.is_supported is True
-    assert BotIoTDownloader.OPENML_NAME == "bot-iot-all-features"
-    assert BotIoTDownloader.OPENML_VERSION == 1
+    assert "kaggle.com" in BotIoTDownloader.url
+    assert "bot-iot-5-data" in BotIoTDownloader.url
+    assert BotIoTDownloader.archive_format == "zip"
     assert "research.unsw.edu.au" in BotIoTDownloader.landing_url
-    assert "OpenML" in BotIoTDownloader.licence_note
+    assert "Koroniotis" in BotIoTDownloader.licence_note
 
 
 # ---------- nsl_kdd loader: synthetic KDDTrain+/Test+ ---------------------
@@ -165,31 +167,19 @@ def test_concat_csv_loader_concatenates_multiple_files(tmp_path, loader_cls):
     assert len(df) == 3
 
 
-# ---------- bot_iot loader: mocked sklearn fetch_openml -------------------
+# ---------- bot_iot loader: synthetic CSV walk ----------------------------
 
-def test_bot_iot_loader_uses_openml(monkeypatch):
-    """BotIoTLoader fetches via sklearn.fetch_openml under the hood."""
-    import sys
-    import types
-
-    feats = pd.DataFrame({"f0": [0.1, 0.2], "f1": [3.0, 4.0]})
-    target = pd.Series(["DDoS", "Normal"])
-    bunch = types.SimpleNamespace(data=feats.copy(), target=target.copy())
-    last_call: dict = {}
-
-    def fake_fetch(name, version=1, as_frame=True, parser="auto"):
-        last_call["name"] = name
-        last_call["version"] = version
-        return bunch
-
-    sk_datasets = sys.modules.setdefault(
-        "sklearn.datasets", types.ModuleType("sklearn.datasets")
+def test_bot_iot_loader_walks_csvs(tmp_path):
+    """BotIoTLoader recursively walks the cache for *.csv files,
+    schema-tolerantly concats, and strips column whitespace."""
+    (tmp_path / "reduced_data_1.csv").write_text(
+        " feat ,attack,category\n1.0,1,DDoS\n2.0,0,Normal\n"
     )
-    monkeypatch.setattr(sk_datasets, "fetch_openml", fake_fetch, raising=False)
-
-    df, label = BotIoTLoader().load("/tmp/_unused", "label")
+    (tmp_path / "reduced_data_2.csv").write_text(
+        "feat,attack,category\n3.0,1,DoS\n"
+    )
+    df, label = BotIoTLoader().load(tmp_path, "label")
     assert label == "label"
-    assert "label" in df.columns
-    assert df["label"].tolist() == ["DDoS", "Normal"]
-    assert last_call["name"] == "bot-iot-all-features"
-    assert last_call["version"] == 1
+    assert "feat" in df.columns           # whitespace-stripped
+    assert "category" in df.columns       # the source label column
+    assert len(df) == 3
