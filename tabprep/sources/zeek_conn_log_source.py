@@ -23,6 +23,7 @@ single profile.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -35,15 +36,56 @@ from tabprep.sources._registry import source
 # without `.labeled`).
 DEFAULT_GLOB = "*.labeled"
 
+# Optional per-file row cap. Some IoT-23 captures contain >100M rows, which
+# would OOM a single pandas concat. The cap is encoded in `SourceSpec.url`
+# as e.g. "per_file_cap=50000" (combinable with the glob via "|", e.g.
+# "*.labeled|per_file_cap=50000"). The cap is applied as a deterministic
+# stratified-by-file head sample (we keep the *first* N data rows of each
+# file, after the metadata header). Random sampling would compromise
+# reproducibility because pandas' chunked reads do not seed predictably.
+_CAP_RE = re.compile(r"per_file_cap=(\d+)")
+
 
 def _read_zeek_header(path: Path) -> list[str]:
-    """Extract the column names from a Zeek `#fields` header line."""
+    """Extract the column names from a Zeek `#fields` header line.
+
+    Standard Zeek output is tab-separated everywhere. IoT-23's labelled
+    captures break that convention by appending two extra columns
+    (`label` + `detailed-label`) using ASCII space as the separator —
+    so the last raw `\\t`-token of the header / each data row contains
+    `tunnel_parents   label   detailed-label`. We detect this by
+    splitting any tab-token on whitespace and flattening; downstream
+    `read_csv` then uses whitespace tokenisation for the data rows.
+    """
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             if line.startswith("#fields"):
-                # "#fields\tts\tuid\t..."  →  ["ts", "uid", ...]
-                return line.rstrip("\n").split("\t")[1:]
+                tokens = line.rstrip("\n").split("\t")[1:]
+                # Flatten any tokens that contain embedded whitespace.
+                fields: list[str] = []
+                for tok in tokens:
+                    fields.extend(tok.split())
+                return fields
     raise RuntimeError(f"zeek_conn_log: no #fields header in {path}")
+
+
+def _parse_options(opt_str: str | None) -> tuple[str, int | None]:
+    """Pull `glob` and `per_file_cap` out of the SourceSpec.url metadata."""
+    if not opt_str:
+        return DEFAULT_GLOB, None
+    pattern = DEFAULT_GLOB
+    cap: int | None = None
+    for part in opt_str.split("|"):
+        part = part.strip()
+        if not part:
+            continue
+        if "*" in part:
+            pattern = part
+        else:
+            m = _CAP_RE.match(part)
+            if m:
+                cap = int(m.group(1))
+    return pattern, cap
 
 
 @source("zeek_conn_log")
@@ -56,9 +98,7 @@ def load_zeek_conn_log(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]
     if not base.is_dir():
         raise FileNotFoundError(f"zeek_conn_log: directory not found: {base}")
 
-    # SourceSpec.url is reused as a free metadata field — set it to a
-    # different glob (e.g. "*.log") to override the default.
-    pattern = spec.url if (spec.url and "*" in spec.url) else DEFAULT_GLOB
+    pattern, per_file_cap = _parse_options(spec.url)
     log_files = sorted(base.rglob(pattern))
     if not log_files:
         raise FileNotFoundError(
@@ -68,15 +108,21 @@ def load_zeek_conn_log(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]
     parts: list[pd.DataFrame] = []
     for f in log_files:
         fields = _read_zeek_header(f)
-        df = pd.read_csv(
-            f,
-            sep="\t",
+        # `sep=r"\s+"` (whitespace) handles both standard tab-only Zeek
+        # output and IoT-23's mixed tab+space layout in a single read.
+        # Requires engine="python" but is acceptable here — TSV reads
+        # are I/O-bound, not CPU-bound.
+        kwargs = dict(
+            sep=r"\s+",
             header=None,
             names=fields,
             comment="#",
-            low_memory=False,
+            engine="python",
             na_values=["-", "(empty)"],
         )
+        if per_file_cap is not None:
+            kwargs["nrows"] = per_file_cap
+        df = pd.read_csv(f, **kwargs)
         parts.append(df)
 
     df = pd.concat(parts, ignore_index=True)

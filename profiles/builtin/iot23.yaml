@@ -11,10 +11,17 @@ description: |
 source:
   kind: zeek_conn_log
   cached_at: raw/iot23/
-  # Public dataset (CC BY 4.0); download from:
-  #   https://www.stratosphereips.org/datasets-iot23
-  # Extract under data/raw/iot23/. The loader walks the tree
-  # recursively and reads every `*.labeled` file (one per capture).
+  # Public dataset (CC BY 4.0); direct tarball at
+  #   https://mcfp.felk.cvut.cz/publicDatasets/IoT-23-Dataset/iot_23_datasets_small.tar.gz
+  # (lite ~9.4 GB — Zeek conn.log.labeled files only, no PCAPs).
+  # Extract under data/raw/iot23/.
+  #
+  # The IoT-23 captures range from a few KB to >10 GB each; loading them
+  # all in one in-memory concat would OOM. The `per_file_cap=50000`
+  # option below caps each capture at 50k flows (≈head-N), keeping the
+  # whole concat under 1.2M rows before the pipeline's
+  # balanced_subsample finishes the job.
+  url: "*.labeled|per_file_cap=50000"
 
 label:
   source_column: detailed-label
@@ -58,3 +65,8 @@ output:
   row_shuffle_seed: 42
 
 # expected_hashes: pin after the first canonical run.
+
+expected_hashes:
+  calibration.csv: 55a6e6ce5207f14b2961d180a93987d088a7df001974a529f6876cbb6e766826
+  test.csv: d3a859c6d3bde2ea9da4cad789b277917310f3e509d1460113531839418f76f3
+  train.csv: 6342e8b5bd708460ff229f32362d6b452b010f763e16c41000b6b3ba02b7c1ec
