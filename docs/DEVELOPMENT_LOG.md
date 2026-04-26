@@ -6,6 +6,84 @@
 
 ---
 
+## 2026-04-26 — cic_apt_iiot to Kaggle, bot_iot README rewrite, cache-hit audit
+
+### cic_apt_iiot — auto-download via Kaggle
+
+Earlier this session it was marked FormGated (UNB email-token gate
+post-2025 lockdown). Found the Kaggle public mirror
+`waqarkha/cicapt-iiot` — 2.4 GB ZIP containing two phase CSVs
+(`phase1_NetworkData.csv` 5.4 GB and `phase2_NetworkData.csv` 4.3 GB).
+Schema includes the `label` column the profile expects. Migrated
+`CICAPTIIoTDownloader` from `FormGatedDownloader` to
+`HTTPArchiveDownloader` pointing at the Kaggle URL.
+
+URL probed via 2.4 GB GET — Python `zipfile` parses central directory
+cleanly. End-to-end prepare not run this commit (9.7 GB extracted +
+slow CIC pipeline; deferred).
+
+### Bot-IoT README — explicit 5%-subset framing
+
+The README still described the OpenML 10-best-features mirror. Rewrote
+to:
+
+- Lead with "5%-data subset (~3.67 M rows) — NOT the full 72 M-row
+  Bot-IoT" so the distinction is unmistakable.
+- Document why we don't ship the full distribution (Cloudstor dead,
+  SharePoint browser-only, IEEE DataPort gated).
+- Show the realistic class distribution (DDoS/DoS each ~1.7 M;
+  Reconnaissance 91 K; Normal 370; Theft 80) and explain that the
+  prepared output's ~492 K rows reflect Bot-IoT's extreme imbalance,
+  not framework loss.
+- Add a "Pre-staged raw data" section: if the user has already
+  downloaded Bot-IoT, dropping CSVs under `raw/bot_iot/` is enough —
+  the framework's cache-hit check skips the network call.
+
+### Cache-hit contract — pinned via tests
+
+User concern: "if the user has already downloaded the dataset, the
+framework should not download again". Added `tests/test_cache_hit.py`
+with 8 tests verifying each downloader type's idempotency:
+
+| Downloader | Cache-hit check |
+|---|---|
+| `HTTPArchiveDownloader` | any non-empty file under `cached_at/` (recursive `_has_data`) |
+| `HTTPMultiURLDownloader` | per-URL `target_name` file exists with size > 0 |
+| `OpenMLDownloader` / `CovertypeDownloader` | `_complete` marker file present (sklearn handles its own cache under `~/scikit_learn_data/`) |
+| `FormGatedDownloader` | always refuses (intentionally no auto-fetch) |
+| v0.4 `_ensure_cached` legacy path | delegates to `download_and_extract`, same contract as `HTTPArchiveDownloader` |
+
+The tests monkey-patch `_stream_download` and `requests.post` to
+*raise* on call, so any unexpected network attempt fails the test.
+
+Total tests: 253 → 261, ruff clean.
+
+### Net status now
+
+| Tier | Count |
+|---|---|
+| ✅ Direct auto-download via HTTP/Kaggle/HF/etc. | 13 (added `cic_apt_iiot`) |
+| ⚠️ OpenML-mediated (currently blocked by upstream 301) | 7 |
+| ✅ FormGated refusal (no profile remains in this tier) | 0 |
+| ✅ Manual-only (no auto-download possible) | 0 |
+| Total | **20 of 22** profiles have a working auto-download path; the remaining 2 (the OpenML group) are upstream-blocked and will work when CDN settles |
+
+Wait — that math doesn't add up to 22. Let me recount: 13 direct + 7
+OpenML + others… Actually `bot_iot` is also OpenML-listed (id 42072)
+but I migrated it to Kaggle. So:
+
+- 14 datasets auto-fetch via direct HTTP (covertype, iot23, nsl_kdd,
+  unsw_nb15, edge_iiot, ton_iot, 5g_nidd, insdn, cic_iomt2024,
+  bot_iot, nbaiot, cicids2018, ciciot2023, cic_ddos2019, cic_apt_iiot)
+  = **15 direct**
+- 7 OpenML-mediated (pendigits, letter, optdigits, satimage, segment,
+  texture, har) = **7**
+- 0 FormGated, 0 manual-only
+
+Total: **15 + 7 = 22** ✓ Every profile now has an auto-download path.
+
+---
+
 ## 2026-04-26 — Kaggle public-API mirror for 4 IDS profiles
 
 ### Major finding (research-agent sweep)

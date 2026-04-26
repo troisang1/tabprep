@@ -6,11 +6,11 @@ description: |
   → delivery → exploitation → installation → C2 → actions). Newest CIC
   release; complements CIC-IDS2018 (enterprise) and CIC-IoT-2023 (consumer IoT).
 
-  Form-gated: UNB CIC restructured its hosting in 2025; direct mirror
-  URLs no longer work. The user must visit the landing page, request
-  the dataset via the form (UNB returns a one-time download token by
-  email), and place the resulting zip under `raw/cic_apt_iiot/`
-  before running prepare. See `tabprep/datasets/cic_apt_iiot/README.md`.
+  Auto-fetched from Kaggle public mirror `waqarkha/cicapt-iiot`
+  (2.4 GB ZIP → 2 phase CSVs, 9.7 GB extracted). UNB's official IP
+  mirror is locked down post-2025 (returns email-token-only); the
+  Kaggle mirror carries the same distribution with the `label`
+  column. See `tabprep/datasets/cic_apt_iiot/README.md`.
 
 downloader: cic_apt_iiot
 loader: cic_apt_iiot

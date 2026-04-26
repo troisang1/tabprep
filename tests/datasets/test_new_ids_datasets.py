@@ -48,13 +48,16 @@ def test_nsl_kdd_downloader_uses_github_mirror():
 
 # ---------- cic_apt_iiot downloader pin -----------------------------------
 
-def test_cic_apt_iiot_downloader_is_form_gated():
-    """UNB CIC's 2025 restructuring took the IP-based mirror offline;
-    the dataset is now distributed via a per-request form. We mark the
-    downloader is_supported=False and refuse rather than try to scrape."""
-    assert CICAPTIIoTDownloader.is_supported is False
+def test_cic_apt_iiot_downloader_uses_kaggle_mirror():
+    """UNB's IP-based mirror is locked down post-2025; the Kaggle
+    public mirror `waqarkha/cicapt-iiot` (2.4 GB ZIP, 2 phase CSVs)
+    carries the canonical distribution with the `label` column.
+    Auto-fetched via Kaggle's `/api/v1/datasets/download/` (no auth)."""
+    assert CICAPTIIoTDownloader.is_supported is True
+    assert "kaggle.com" in CICAPTIIoTDownloader.url
+    assert "cicapt-iiot" in CICAPTIIoTDownloader.url
+    assert CICAPTIIoTDownloader.archive_format == "zip"
     assert "iiot-dataset-2024" in CICAPTIIoTDownloader.landing_url
-    assert "request form" in CICAPTIIoTDownloader.licence_note.lower()
 
 
 # ---------- insdn downloader pin ------------------------------------------
