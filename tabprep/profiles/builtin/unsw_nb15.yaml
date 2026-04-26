@@ -2,18 +2,21 @@ name: unsw_nb15
 version: 1.0.0
 description: UNSW-NB15 network intrusion (multi-class via attack_cat)
 
-source:
-  kind: concat_csvs
-  cached_at: raw/unsw_nb15/
-  url: latin-1                                 # encoding override (see concat_csvs source)
-  # The original UNSW-NB15 distribution is mirrored on Zenodo (record
-  # 10140548). Four CSVs totaling ~588 MB. Auto-fetched via the v0.4
-  # download_urls path; concat_csvs then reads them.
-  download_urls:
-    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_1.csv/content
-    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_2.csv/content
-    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_3.csv/content
-    - https://zenodo.org/api/records/10140548/files/UNSW-NB15_4.csv/content
+# v0.5 schema: the dedicated `unsw_nb15` loader injects the published
+# 49-column schema before reading because the upstream CSVs are
+# headerless (the legacy `concat_csvs` source consumed the first data
+# row as column names and so couldn't find `attack_cat`).
+downloader: unsw_nb15
+loader: unsw_nb15
+cached_at: raw/unsw_nb15/
+loader_options:
+  max_rows_per_file: 1000000      # bound RAM on the largest CSV (~4 GB
+                                  # raw); 4 × 1M = 4M rows total — well
+                                  # above the downstream onehot/split
+                                  # working set on a 24 GiB host.
+  sample_mode: head
+  sample_seed: 42
+  memory_budget_gb: 16
 
 label:
   source_column: attack_cat
@@ -21,10 +24,11 @@ label:
   normalize: lowercase_underscore
 
 pipeline:
-  # Note: the original binary `label` column is dropped automatically
-  # when `attack_cat` is renamed to `label` (see rename_label op).
+  # The binary `Label` column is the *other* upstream target. Drop it
+  # explicitly so it doesn't leak into the feature set after attack_cat
+  # is renamed to `label`.
   - op: drop_columns
-    columns: [id]
+    columns: [Label]
   - op: filter_rows_label_isnull
   - op: drop_ip_columns
   - op: encode_categoricals
@@ -52,7 +56,9 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-expected_hashes:
-  calibration.csv: fc293e65a90e7e7c6ae83cca07b404e5ec95b264d1567e456bd2ce863cd484e4
-  test.csv: 650b04251b22a12a5ea236d7be78c20c36393570e5833885f8ca96fd7b153d71
-  train.csv: b6620fe39d6c86b0331593babb8bb16cd75cca9fef6c8f4ebe8504a9273bfeaf
+# expected_hashes intentionally unset: the previous pin was generated
+# from a broken load (the legacy `concat_csvs` path treated the first
+# data row as the header and produced a different — invalid — frame).
+# Re-pin after the first canonical run via:
+#   tabprep prepare --profile profiles/builtin/unsw_nb15.yaml
+#   python scripts/pin_hashes.py --profile profiles/builtin/unsw_nb15.yaml

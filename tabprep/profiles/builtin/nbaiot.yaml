@@ -5,11 +5,16 @@ description: N-BaIoT IoT botnet traffic (per-attack-family CSVs, label from file
 source:
   kind: nbaiot_dir
   cached_at: raw/nbaiot/
-  # UCI ML Repository serves the full N-BaIoT distribution as a single
-  # ZIP. Confirmed live as of 2026-04-25. The ZIP extracts to ~96 CSVs
-  # across 9 attack families × ~11 device dirs, which the nbaiot_dir
-  # source loader walks recursively.
-  download_url: https://archive.ics.uci.edu/static/public/442/detection+of+iot+botnet+attacks+n+baiot.zip
+  # The UCI primary distribution ships the attack traffic inside
+  # `gafgyt_attacks.rar` / `mirai_attacks.rar` archives — a `.rar`
+  # extraction step is not part of this framework's pipeline. The
+  # Kaggle mirror `mkashifn/nbaiot-dataset` carries the SAME 93 CSVs
+  # pre-extracted in a flat layout (~894 MB ZIP, ~3.8 GB extracted),
+  # keyed as `<device-id>.<family>.<attack>.csv` plus
+  # `<device-id>.benign.csv`. Kaggle's `/api/v1/datasets/download/...`
+  # serves CC-BY datasets without auth via GET (HEAD returns 404 —
+  # Kaggle quirk; framework uses GET).
+  download_url: https://www.kaggle.com/api/v1/datasets/download/mkashifn/nbaiot-dataset
   archive_format: zip
 
 label:
@@ -44,7 +49,11 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-expected_hashes:
-  calibration.csv: e379c5e61ef2846b2757c3154d8791add2baf2327cd6c83905e3c26aac0ee6e9
-  test.csv: 179be6c700c856666518df8ff85adfcfedb9f82f03827a57799c5177ae113096
-  train.csv: 4c320ab3eeb8a626df76a29c181bee1b1b55d383cba4ad0130b634ed1a621ee8
+# expected_hashes intentionally unset: the previous pin was generated
+# from the UCI distribution (which our loader could no longer ingest
+# end-to-end because the attack traffic was inside un-extractable
+# `.rar` archives). The Kaggle mirror produces a different — but
+# valid — concatenation, so the prior hashes do not apply. Re-pin
+# after the first canonical run via:
+#   tabprep prepare --profile profiles/builtin/nbaiot.yaml
+#   python scripts/pin_hashes.py --profile profiles/builtin/nbaiot.yaml
