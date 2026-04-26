@@ -80,3 +80,45 @@ def test_raises_when_directory_empty(tmp_path):
         assert "no CSV files" in str(exc)
     else:
         raise AssertionError("expected FileNotFoundError when directory is empty")
+
+
+def test_glob_max_rows_per_file_caps_load(tmp_path):
+    # Two CSVs with 100 rows each. The pipe-overloaded glob caps per-file
+    # reads at 10 rows — total should be 20, not 200.
+    big_csv = "x,label\n" + "\n".join(f"{i},A" for i in range(100)) + "\n"
+    _write_csv(tmp_path / "a.csv", big_csv)
+    _write_csv(tmp_path / "b.csv", big_csv.replace(",A", ",B"))
+    spec = SourceSpec(
+        kind="concat_csvs",
+        cached_at=str(tmp_path),
+        glob="*.csv|max_rows_per_file=10",
+    )
+    df, _ = load_concat_csvs(spec, label="label")
+    assert len(df) == 20                                # 10 from each file
+    assert set(df["label"].unique()) == {"A", "B"}
+
+
+def test_glob_memory_budget_aborts(tmp_path):
+    # Tiny budget (1 byte) → guard fires after the first file.
+    _write_csv(tmp_path / "a.csv", "x,label\n1,A\n")
+    _write_csv(tmp_path / "b.csv", "x,label\n2,B\n")
+    spec = SourceSpec(
+        kind="concat_csvs",
+        cached_at=str(tmp_path),
+        glob="*.csv|memory_budget_gb=0.0000001",
+    )
+    from tabprep.core.memguard import RAMBudgetExceeded
+    try:
+        load_concat_csvs(spec, label="label")
+    except RAMBudgetExceeded as exc:
+        assert "concat_csvs" in str(exc)
+    else:
+        raise AssertionError("expected RAMBudgetExceeded with tiny budget")
+
+
+def test_glob_default_pattern_when_glob_unset(tmp_path):
+    # Behaviour without `glob` should be identical to the legacy code path.
+    _write_csv(tmp_path / "a.csv", "x,label\n1,A\n")
+    spec = SourceSpec(kind="concat_csvs", cached_at=str(tmp_path))
+    df, _ = load_concat_csvs(spec, label="label")
+    assert df["label"].tolist() == ["A"]

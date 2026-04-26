@@ -32,6 +32,7 @@ from typing import Any
 
 import pandas as pd
 
+from tabprep.core.memguard import MemoryGuard, resolve_budget_bytes
 from tabprep.datasets._base import BaseLoader, loader
 
 
@@ -72,6 +73,7 @@ class IoT23Loader(BaseLoader):
         *,
         glob: str | None = None,
         per_file_cap: int | None = None,
+        memory_budget_gb: float | None = None,
         **opts: Any,
     ) -> tuple[pd.DataFrame, str]:
         pattern = glob or self.DEFAULT_GLOB
@@ -81,6 +83,10 @@ class IoT23Loader(BaseLoader):
                 f"iot23 loader: no files matching {pattern!r} under {raw_dir}"
             )
 
+        guard = MemoryGuard(
+            budget_bytes=resolve_budget_bytes(memory_budget_gb),
+            label="iot23",
+        )
         parts: list[pd.DataFrame] = []
         for f in files:
             fields = _parse_zeek_fields_header(f)
@@ -96,6 +102,7 @@ class IoT23Loader(BaseLoader):
                 kwargs["nrows"] = int(per_file_cap)
             df = pd.read_csv(f, **kwargs)
             parts.append(df)
+            guard.check(detail=f"after {f.name} ({len(parts)}/{len(files)})")
 
         df = pd.concat(parts, ignore_index=True)
         return df, label_col

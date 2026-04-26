@@ -84,6 +84,63 @@ def test_read_head_n(tmp_path):
     assert df["x"].tolist() == list(range(10))
 
 
+# ---------- read_csv_with_row_cap (head + reservoir) ----------------------
+
+def test_row_cap_head_mode(tmp_path):
+    p = tmp_path / "big.csv"
+    p.write_text("x\n" + "\n".join(str(i) for i in range(10_000)) + "\n")
+    df = BaseLoader.read_csv_with_row_cap(p, max_rows=100, mode="head")
+    assert len(df) == 100
+    assert df["x"].tolist() == list(range(100))
+
+
+def test_row_cap_reservoir_bounded(tmp_path):
+    p = tmp_path / "big.csv"
+    p.write_text("x\n" + "\n".join(str(i) for i in range(50_000)) + "\n")
+    df = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=200, mode="reservoir", seed=42, chunksize=5_000
+    )
+    assert len(df) == 200
+    # All values must come from the original [0, 50_000) range.
+    assert df["x"].between(0, 49_999).all()
+
+
+def test_row_cap_reservoir_deterministic(tmp_path):
+    p = tmp_path / "big.csv"
+    p.write_text("x\n" + "\n".join(str(i) for i in range(5_000)) + "\n")
+    a = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=100, mode="reservoir", seed=42, chunksize=1_000
+    )
+    b = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=100, mode="reservoir", seed=42, chunksize=1_000
+    )
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_row_cap_reservoir_smaller_than_cap_keeps_all(tmp_path):
+    p = tmp_path / "small.csv"
+    p.write_text("x\n" + "\n".join(str(i) for i in range(50)) + "\n")
+    df = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=200, mode="reservoir", seed=42, chunksize=10
+    )
+    assert len(df) == 50
+    assert sorted(df["x"].tolist()) == list(range(50))
+
+
+def test_row_cap_rejects_invalid_mode(tmp_path):
+    p = tmp_path / "x.csv"
+    p.write_text("x\n1\n")
+    with pytest.raises(ValueError, match="unknown mode"):
+        BaseLoader.read_csv_with_row_cap(p, max_rows=1, mode="bogus")
+
+
+def test_row_cap_rejects_nonpositive_rows(tmp_path):
+    p = tmp_path / "x.csv"
+    p.write_text("x\n1\n")
+    with pytest.raises(ValueError, match="max_rows must be positive"):
+        BaseLoader.read_csv_with_row_cap(p, max_rows=0, mode="head")
+
+
 # ---------- chunked_csv_iter -----------------------------------------------
 
 def test_chunked_csv_iter(tmp_path):

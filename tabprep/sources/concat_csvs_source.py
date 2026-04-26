@@ -24,6 +24,15 @@ needs to be derived from the filename, use `nbaiot_dir` instead.
   has Bluetooth-only and WiFi-only columns). `pd.concat` aligns on
   column names and fills missing with NaN; the pipeline's
   `drop_high_nan_columns` op then removes the per-tree extras.
+- **RAM-bounded reads**. The `glob` field of `SourceSpec` is overloaded
+  to also carry per-file row caps:
+    - `"*.csv|max_rows_per_file=200000"`            → head-N per file
+    - `"*.csv|max_rows_per_file=200000|sample=reservoir"` → unbiased sample
+    - `"*.csv|memory_budget_gb=12"`                 → abort if RSS > 12 GiB
+  Multiple options are pipe-separated. Without these caps the loader
+  reads every CSV whole, which on the 29 GB CIC-DDoS-2019 distribution
+  exhausts a 64 GB host before `pd.concat`. With the cap, memory is
+  bounded at `(max_rows_per_file × n_files × row_bytes)`.
 
 The recursive + encoding-tolerant design lets a maintainer write a
 profile *before* downloading the raw data — the source will adapt to
@@ -36,7 +45,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from tabprep.core.memguard import MemoryGuard, resolve_budget_bytes
 from tabprep.core.profile import SourceSpec
+from tabprep.datasets._base import BaseLoader
 from tabprep.sources._registry import source
 
 # Default encoding ladder, tried in order when no specific encoding is
@@ -64,6 +75,29 @@ def _resolve_encodings(spec) -> tuple[str, ...]:
     return (pinned,)
 
 
+def _parse_glob_options(glob: str | None) -> dict[str, str]:
+    """Parse the pipe-overloaded glob field into a dict of options.
+
+    `"*.csv|max_rows_per_file=200000|sample=reservoir"` →
+    `{"pattern": "*.csv", "max_rows_per_file": "200000", "sample": "reservoir"}`
+
+    Unrecognised keys are kept verbatim — callers ignore what they
+    don't use, which lets us extend the vocabulary without breaking
+    older profiles. Returns `{"pattern": "*.csv"}` when `glob` is
+    None (the default discovery pattern).
+    """
+    if not glob:
+        return {"pattern": "*.csv"}
+    parts = [p.strip() for p in glob.split("|") if p.strip()]
+    out: dict[str, str] = {"pattern": parts[0] or "*.csv"}
+    for token in parts[1:]:
+        if "=" not in token:
+            continue
+        k, v = token.split("=", 1)
+        out[k.strip()] = v.strip()
+    return out
+
+
 def _read_with_encodings(path: Path, encodings: tuple[str, ...]) -> pd.DataFrame:
     """Try each encoding until one succeeds, else raise the last error."""
     last_exc: Exception | None = None
@@ -88,25 +122,53 @@ def load_concat_csvs(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]:
     if not base.is_dir():
         raise FileNotFoundError(f"concat_csvs: directory not found: {base}")
 
+    opts = _parse_glob_options(spec.glob)
+    pattern = opts["pattern"]
+    max_rows_per_file = (
+        int(opts["max_rows_per_file"]) if "max_rows_per_file" in opts else None
+    )
+    sample_mode = opts.get("sample", "head")          # "head" | "reservoir"
+    sample_seed = int(opts.get("sample_seed", "42"))
+    memory_budget_gb = (
+        float(opts["memory_budget_gb"]) if "memory_budget_gb" in opts else None
+    )
+
     # Recursive, case-insensitive `.csv` discovery. Sorting by full path
     # gives a deterministic read order regardless of the underlying file-
     # system or OS (HFS+ vs APFS vs ext4 differ on case-folded glob).
-    files = sorted(
-        p for p in base.rglob("*")
-        if p.is_file() and p.suffix.lower() == ".csv"
-    )
+    if pattern == "*.csv":
+        files = sorted(
+            p for p in base.rglob("*")
+            if p.is_file() and p.suffix.lower() == ".csv"
+        )
+    else:
+        files = sorted(p for p in base.rglob(pattern) if p.is_file())
     if not files:
         raise FileNotFoundError(f"concat_csvs: no CSV files under {base}")
 
     encodings = _resolve_encodings(spec)
+    guard = MemoryGuard(
+        budget_bytes=resolve_budget_bytes(memory_budget_gb),
+        label="concat_csvs",
+    )
 
     parts: list[pd.DataFrame] = []
     for f in files:
         try:
-            d = _read_with_encodings(f, encodings)
+            if max_rows_per_file is not None:
+                d = BaseLoader.read_csv_with_row_cap(
+                    f,
+                    max_rows=max_rows_per_file,
+                    mode=sample_mode,
+                    seed=sample_seed,
+                    encodings=encodings,
+                )
+            else:
+                d = _read_with_encodings(f, encodings)
         except Exception as exc:                                      # noqa: BLE001
             raise RuntimeError(f"concat_csvs: failed to read {f.name}: {exc}") from exc
         parts.append(d)
+        guard.check(detail=f"after {f.name} ({len(parts)}/{len(files)})")
 
     # `pd.concat` aligns columns by name; missing columns become NaN, which
     # the pipeline's drop_high_nan_columns / fill_nan ops handle later.

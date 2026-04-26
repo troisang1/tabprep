@@ -15,10 +15,25 @@ description: |
 downloader: cic_apt_iiot
 loader: cic_apt_iiot
 cached_at: raw/cic_apt_iiot/
-loader_options: {}
+# RAM guard: phase1+phase2 CSVs total ~9 GB raw and after one-hot
+# encoding the working set on a 24 GB host blew past available RAM
+# in the previous stress run. Per-file head-N caps both at 1M rows
+# (≈2M rows total) which fits comfortably and is still ~4× the
+# downstream `balanced_subsample max_total: 500_000` so the cap is
+# distribution-neutral. `memory_budget_gb=16` aborts cleanly if RSS
+# climbs further (e.g. on smaller hosts).
+loader_options:
+  max_rows_per_file: 1000000
+  sample_mode: head
+  sample_seed: 42
+  memory_budget_gb: 16
 
 label:
-  source_column: Label
+  source_column: label                          # Kaggle mirror uses lowercase
+                                                # (UNB's original CSVs had
+                                                # `Label` capitalised, but the
+                                                # `waqarkha/cicapt-iiot` Kaggle
+                                                # repack is `label`).
   rename_to: label
   normalize: lowercase_underscore
 

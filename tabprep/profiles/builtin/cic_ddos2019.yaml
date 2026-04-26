@@ -20,9 +20,24 @@ source:
   # without auth (HEAD returns 404 — Kaggle quirk; framework uses GET).
   download_url: https://www.kaggle.com/api/v1/datasets/download/rodrigorosasilva/cic-ddos2019-30gb-full-dataset-csv-files
   archive_format: zip
+  # RAM guard: the 19 CSVs total ~30 GB extracted; reading whole would
+  # exceed RAM on most hosts. Per-file head-N caps the load at
+  # 19 × 200 000 ≈ 3.8M rows, well within memory and still ~4× the
+  # downstream `balanced_subsample max_total: 1_000_000` so the cap
+  # does not bias the final distribution. `memory_budget_gb=24` is a
+  # hard ceiling — the loader aborts before swap thrashes.
+  glob: "*.csv|max_rows_per_file=200000|sample=head|memory_budget_gb=16"
 
 label:
-  source_column: Label
+  source_column: " Label"                       # Kaggle mirror keeps UNB's
+                                                # leading whitespace on this
+                                                # column (CIC CSVs traditionally
+                                                # ship column names with a
+                                                # leading space). Quoted YAML
+                                                # string preserves the space;
+                                                # rename_label runs before the
+                                                # `strip_column_whitespace` op
+                                                # in the pipeline below.
   rename_to: label
   normalize: lowercase_underscore
 

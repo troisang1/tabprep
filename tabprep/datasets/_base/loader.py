@@ -29,6 +29,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Iterator
 
+import numpy as np
 import pandas as pd
 
 
@@ -156,6 +157,162 @@ class BaseLoader(ABC):
             encodings=encodings,
             nrows=int(n),
             **read_csv_kwargs,
+        )
+
+    @staticmethod
+    def read_csv_with_row_cap(
+        path: Path,
+        *,
+        max_rows: int,
+        mode: str = "head",
+        seed: int = 42,
+        chunksize: int = 100_000,
+        encodings: tuple[str, ...] | None = None,
+        **read_csv_kwargs: Any,
+    ) -> pd.DataFrame:
+        """Read a CSV with a hard row cap — bounds memory for huge files.
+
+        The CIC-DDoS-2019 dataset ships individual CSVs of multi-GB
+        size; reading any of them whole defeats the post-load
+        `balanced_subsample` cap (we'd OOM before getting there). This
+        helper lets the loader stream-read with a deterministic bound
+        on the in-memory row count.
+
+        Parameters
+        ----------
+        max_rows
+            Hard cap on the rows returned for this file.
+        mode
+            - ``"head"``: take the first `max_rows` (cheapest; reads
+              only what's needed; biased toward start of file).
+            - ``"reservoir"``: stream the full file in chunks of
+              `chunksize` and reservoir-sample `max_rows` rows
+              uniformly at random with `seed`. Cost is one full read
+              of the file; benefit is an unbiased sample. Memory stays
+              bounded at `max_rows + chunksize`.
+        seed
+            Deterministic seed for reservoir mode.
+        chunksize
+            Streaming chunk size for reservoir mode (reservoir mode
+            ignores it for files smaller than `chunksize`).
+        encodings, **read_csv_kwargs
+            Forwarded to the underlying read.
+
+        Returns
+        -------
+        pd.DataFrame
+            At most `max_rows` rows.
+        """
+        if max_rows <= 0:
+            raise ValueError(f"max_rows must be positive (got {max_rows})")
+        if mode == "head":
+            return BaseLoader.read_head_n(
+                path, n=max_rows, encodings=encodings, **read_csv_kwargs
+            )
+        if mode == "reservoir":
+            return BaseLoader._reservoir_sample_csv(
+                path,
+                max_rows=int(max_rows),
+                seed=int(seed),
+                chunksize=int(chunksize),
+                encodings=encodings,
+                **read_csv_kwargs,
+            )
+        raise ValueError(
+            f"unknown mode {mode!r} (expected 'head' or 'reservoir')"
+        )
+
+    @staticmethod
+    def _reservoir_sample_csv(
+        path: Path,
+        *,
+        max_rows: int,
+        seed: int,
+        chunksize: int,
+        encodings: tuple[str, ...] | None,
+        **read_csv_kwargs: Any,
+    ) -> pd.DataFrame:
+        """Stream-read a CSV and reservoir-sample `max_rows` rows.
+
+        Implements algorithm R (Vitter 1985): stream the file in
+        chunks, hold a fixed `max_rows`-row reservoir, and replace
+        rows with shrinking probability as the input grows. Memory is
+        bounded at `max_rows + chunksize` rows regardless of input
+        size — this is how a 10 GB CSV fits inside a 1 GB sample.
+
+        Encoding fallback works the same as `read_csv_with_encoding_fallback`
+        (try utf-8 → latin-1 → cp1252 unless caller pinned).
+        """
+        encs = encodings or BaseLoader.DEFAULT_ENCODINGS
+        kwargs = {"low_memory": False, **read_csv_kwargs}
+        last_exc: Exception | None = None
+
+        for enc in encs:
+            try:
+                rng = np.random.default_rng(int(seed))
+                reservoir: pd.DataFrame | None = None
+                seen = 0
+                iterator = pd.read_csv(
+                    path, encoding=enc, chunksize=int(chunksize), **kwargs
+                )
+                for chunk in iterator:
+                    n = len(chunk)
+                    if n == 0:
+                        continue
+                    if reservoir is None:
+                        # Fast path: first chunk → take the head of it
+                        # to seed the reservoir.
+                        if n <= max_rows:
+                            reservoir = chunk.copy()
+                            seen = n
+                            continue
+                        idx = rng.choice(n, size=max_rows, replace=False)
+                        reservoir = chunk.iloc[np.sort(idx)].reset_index(drop=True)
+                        seen = n
+                        continue
+                    if len(reservoir) < max_rows:
+                        # Reservoir not yet full — pull rows from this
+                        # chunk until it is, then switch to replacement.
+                        need = max_rows - len(reservoir)
+                        if n <= need:
+                            reservoir = pd.concat(
+                                [reservoir, chunk], ignore_index=True
+                            )
+                            seen += n
+                            continue
+                        head = chunk.iloc[:need]
+                        reservoir = pd.concat(
+                            [reservoir, head], ignore_index=True
+                        )
+                        seen += need
+                        chunk = chunk.iloc[need:].reset_index(drop=True)
+                        n = len(chunk)
+                    # Algorithm R: each row in `chunk` has probability
+                    # max_rows / (seen + i + 1) of replacing a random
+                    # reservoir slot. Vectorised: draw uniform indices
+                    # in [0, seen+i+1) and accept the ones < max_rows.
+                    positions = np.arange(seen + 1, seen + n + 1)
+                    j = rng.integers(low=0, high=positions, size=n)
+                    accept = j < max_rows
+                    if accept.any():
+                        slots = j[accept]
+                        replacement_rows = chunk.iloc[np.where(accept)[0]]
+                        # Replace into the reservoir at `slots`.
+                        reservoir.iloc[slots] = replacement_rows.values
+                    seen += n
+
+                if reservoir is None:
+                    return pd.DataFrame()
+                # Final shuffle so the row order does not leak the
+                # streaming insertion order.
+                idx = rng.permutation(len(reservoir))
+                return reservoir.iloc[idx].reset_index(drop=True)
+            except UnicodeDecodeError as exc:
+                last_exc = exc
+                continue
+        raise RuntimeError(
+            f"BaseLoader._reservoir_sample_csv: could not decode {path} "
+            f"with encodings={encs}: {last_exc}"
         )
 
     # ----------------------------------------------------- stratified sampling
