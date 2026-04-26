@@ -4,304 +4,275 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-A reproducible framework for preparing **tabular** datasets into ready-to-run
-`train` / `calibration` / `test` CSVs from a single declarative profile.
-
-> Same profile + same framework version + same source bytes = byte-identical
-> output CSVs on every machine. Verified by SHA-256 manifests in every run.
-
----
-
-## Why this exists
-
-Most ML benchmarks ship a script (or several) that downloads, cleans, encodes,
-splits, and saves a dataset. Those scripts drift, the seeds get forgotten, the
-column order changes between runs, and reproducing a "published" dataset
-becomes archaeology.
-
-**tabprep replaces those scripts with a single executor and one profile YAML
-per dataset.** The YAML records:
-
-  - the source URL (with a checksum),
-  - the ordered pipeline of cleaning ops,
-  - the split parameters,
-  - the **expected output hashes** of the final CSVs.
-
-A maintainer locks the recipe by pinning hashes. A user then re-runs the
-profile and either gets the same bytes (`tabprep verify` passes) or a clear
-mismatch report. No more "did I configure this right?" — the framework tells
-you.
-
----
-
-## Built-in profiles (22 datasets)
-
-The repo ships profile recipes for the [cnNFST / Hyper-NFST Track B
-benchmark](https://github.com/troisang1/cnNFST) plus a curated IDS
-catalogue spanning legacy → recent, enterprise → IoT → SDN:
-
-| Domain | Profiles |
-|---|---|
-| **UCI tabular** (8) | `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har`, `covertype` |
-| **IDS — enterprise / IoT** (10) | `5g_nidd`, `ton_iot`, `nbaiot`, `edge_iiot`, `unsw_nb15`, `cicids2018`, `ciciot2023`, `cic_ddos2019`, `cic_iomt2024`, `iot23` |
-| **IDS — extended catalogue** (4) | `nsl_kdd` (legacy), `insdn` (SDN), `cic_apt_iiot` (most recent CIC release), `bot_iot` (most-cited IoT botnet) |
-
-Form-gated profiles (UNB CIC, Mendeley, UNSW Bot-IoT) auto-submit a
-licence-consent form using your `TABPREP_USER_*` env vars — see the
-per-dataset README under `tabprep/datasets/<name>/`.
-
-UCI profiles auto-fetch from OpenML / sklearn (no manual download). IDS
-profiles need a one-time manual download under `data/raw/<name>/` — the
-profile tells you the URL and verifies the bytes via SHA-256 before any
-preprocessing runs.
-
----
-
-## Quickstart
-
-### From Python (recommended)
+**One line of Python → train / calibration / test DataFrames for 15+ benchmark
+datasets.** No tuning, no manual download, no `~/.cache` archaeology.
 
 ```python
 import tabprep
 
-# One-call: prepare + return DataFrames
-train_df, cal_df, test_df = tabprep.load_splits("pendigits")
-
-# Or get explicit access to paths and verification status
-result = tabprep.prepare("pendigits")
-result.verified                         # True if hashes match the pinned recipe
-result.output_dir                       # ./prepared/pendigits/
-train_df = result.load("train")
-
-# Use a custom YAML
-result = tabprep.prepare("./my_profile.yaml", output_dir="./out")
-
-# Discover what's built in
-for prof in tabprep.list_profiles():
-    print(prof.name, prof.version, prof.description.splitlines()[0])
+train, cal, test = tabprep.load_splits("nsl_kdd")    # done.
 ```
 
-A walkable example lives at [`examples/quickstart.py`](examples/quickstart.py).
-
-### From the CLI
-
-```bash
-git clone https://github.com/troisang1/tabprep.git
-cd tabprep
-pip install -e .
-
-tabprep list                                       # list built-in profiles
-tabprep prepare --profile pendigits                # by name (built-in lookup)
-tabprep prepare --profile ./my_profile.yaml        # custom YAML
-tabprep verify  --profile pendigits                # check pinned hashes match
-tabprep prepare --all --source-kinds openml,sklearn  # whole UCI subset
-tabprep verify  --all                                # verify everything
-```
-
-Default output goes to `./prepared/<dataset>/` (relative to the cwd);
-override with `--output-root` (CLI) or `output_dir=` (Python API).
-Default raw-data root is `./raw/`; override with `--data-root` /
-`data_root=`.
+That's the contract. tabprep handles the download, the cleaning, the
+encoding, the split, and the byte-stable canonical write — the same
+inputs always produce the same output bytes on every machine.
 
 ---
 
-## How a profile is structured
+## Get started in 30 seconds
 
-Every profile is a single YAML file with this shape (v0.5 schema):
+```bash
+pip install -e .
+```
+
+```python
+import tabprep
+
+# 1. Train/cal/test in one call (downloads on first use, cached after)
+train, cal, test = tabprep.load_splits("nsl_kdd")
+
+# 2. Or get the full result with paths + verification status
+result = tabprep.prepare("nsl_kdd")
+print(result.output_dir)        # ./prepared/nsl_kdd/
+train = result.load("train")    # → pd.DataFrame
+
+# 3. List what's available
+for prof in tabprep.list_profiles():
+    print(prof.name, "—", prof.description.splitlines()[0])
+```
+
+Every dataset arrives as a **5% stratified subset** by default — a
+size that runs experiments in seconds while preserving every class
+in the source distribution. Need the full thing? Edit one line in
+the profile YAML (`fraction: 0.05` → `fraction: 1.0`).
+
+---
+
+## What you get out of the box
+
+15+ ready-to-go datasets with no manual download:
+
+| Family | Datasets | Source |
+|---|---|---|
+| **Network IDS — IoT** | `5g_nidd`, `bot_iot`, `ciciot2023`, `cic_iomt2024`, `iot23`, `nbaiot`, `ton_iot` | Kaggle / Stratosphere / UCI mirrors |
+| **Network IDS — enterprise** | `cicids2018`, `cic_ddos2019`, `cic_apt_iiot`, `unsw_nb15`, `nsl_kdd`, `edge_iiot`, `insdn` | UNB CIC / Zenodo / Kaggle |
+| **UCI tabular** | `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har`, `covertype` | OpenML / sklearn |
+
+> **Heads-up.** OpenML's API server has had an HTTP-301 self-redirect bug
+> since Apr 2026; the 7 OpenML profiles can't auto-fetch until upstream
+> fixes it. The 15 IDS profiles all work today.
+
+Each profile downloads from a *public* mirror (Kaggle, Zenodo, sklearn,
+direct UCI). No licence form. No SharePoint auth. No "request access".
+
+---
+
+## What every profile guarantees
+
+Out of the box, every profile applies these defaults so your benchmark
+results are comparable across datasets:
+
+| Standardisation | What it does |
+|---|---|
+| **5% stratified subsample** | Tractable size; preserves class proportions; tiny classes survive (floor=1). |
+| **No rebalancing** | Classes stay in their natural ratios — no synthetic balance. |
+| **No scaling / normalisation** | Raw feature values are preserved. Apply your own scaler at the model boundary if you need one. |
+| **IP / MAC / identifier columns dropped** | Removes trivial leakage in network IDS data (no model can cheat by memorising source IP). |
+| **One label column** | Datasets with both binary + multi-class targets keep only the multi-class one (the binary is dropped to prevent leakage). |
+| **RAM-bounded loading** | Large datasets (cic_ddos2019 = 29 GB raw) load with per-file caps and a memory watchdog so the process never OOMs. |
+| **Class-aware sampling** | Per-file row caps use a two-pass `stratified_by_label` mode that guarantees no minority class is silently dropped. |
+
+Want the full dataset, no subsampling, no encoding? Override per-profile
+in YAML — every default is one line.
+
+---
+
+## Common recipes
+
+### Just give me DataFrames
+
+```python
+train, cal, test = tabprep.load_splits("ciciot2023")
+```
+
+### I want the full dataset, not 5%
+
+Copy the profile and bump the fraction:
+
+```bash
+cp $(python -c "import tabprep, pathlib; print(pathlib.Path(tabprep.__file__).parent / 'profiles/builtin/ciciot2023.yaml')") my_ciciot2023.yaml
+```
+
+Edit `fraction: 0.05` → `fraction: 1.0` (the last op in the pipeline) and:
+
+```python
+result = tabprep.prepare("./my_ciciot2023.yaml")
+```
+
+### I want my own dataset
+
+```python
+result = tabprep.prepare("./my_profile.yaml")
+```
+
+See [`docs/adding_a_dataset.md`](docs/adding_a_dataset.md) for the
+profile YAML format. Or copy a built-in profile and edit.
+
+### CLI alternative
+
+```bash
+tabprep list                                # 22 profiles
+tabprep prepare --profile nsl_kdd           # by name
+tabprep prepare --profile ./my.yaml         # custom YAML
+tabprep prepare --all                       # everything (~30 min, ~3 GB)
+tabprep verify  --profile nsl_kdd           # check pinned hashes match
+```
+
+Outputs land in `./prepared/<name>/` by default. Override with
+`--output-root` (CLI) or `output_dir=` (Python API).
+
+---
+
+## Reproducibility — same input → same bytes
+
+Every profile that pins `expected_hashes` becomes a verify-on-write
+contract: rerun the prepare and either get the same bytes or a clear
+mismatch report.
+
+```python
+result = tabprep.prepare("nsl_kdd")
+result.verified                  # True if all output hashes match the pin
+```
+
+Behind the scenes:
+
+- **Deterministic ops.** Every randomized op (sampling, shuffle) takes
+  an explicit seed.
+- **Canonical CSV writer.** Columns sorted alphabetically; rows sorted
+  by per-row SHA-256 then permuted by `row_shuffle_seed`; floats
+  formatted with fixed precision (no platform `%g`); `\n` line
+  terminator; RFC-4180 minimal quoting.
+- **Source integrity.** Raw downloads are SHA-256-checked when a
+  hash is pinned in the profile.
+- **Manifest.** Every run writes `_manifest.json` with file sizes,
+  row/column counts, SHA-256 hashes, profile name, and framework
+  version.
+
+---
+
+## Profile YAML in 30 seconds
 
 ```yaml
-name: pendigits
+name: my_dataset
 version: 1.0.0
-description: Pen-based handwritten digits (10 classes, 16 features) — OpenML
+description: One-line description.
 
-# v0.5 schema: short downloader/loader names looked up in the
-# tabprep.datasets registries. The downloader pre-fetches raw bytes
-# (writes a `_complete` marker into cached_at); the loader assembles
-# the (df, label_col) tuple.
-downloader: openml                   # registered class name
-loader: openml                       # registered class name
-cached_at: raw/openml/pendigits/     # relative to --data-root
+# Where the raw data comes from (one of three patterns)
+downloader: openml                      # for the simple cases
+loader: openml
+cached_at: raw/openml/my_dataset/
 loader_options:
-  openml_name: pendigits
-  openml_version: 1                  # optional; defaults to 1
+  openml_name: my_dataset
 
-label:                               # how to identify the target
-  source_column: label
+label:
+  source_column: label                  # the column holding the target
   rename_to: label
   normalize: lowercase_underscore
 
-pipeline:                            # ordered list of cleaning ops
-  - op: rename_features_f0fN
+pipeline:                               # ordered cleaning ops
+  - op: drop_ip_columns                 # drop network IPs (anti-leakage)
+  - op: encode_categoricals
+    max_cardinality: 50
+    method: onehot
+  - op: coerce_numeric
+  - op: replace_inf
+  - op: fill_nan
+    value: 0
   - op: filter_min_class_count
     min_count: 50
+  # Standardised 5% stratified slice — preserves class proportions.
+  - op: stratified_fraction_sample
+    fraction: 0.05
+    seed: 42
 
-split:                               # train/cal/test partition
+split:
   kind: stratified_class_balanced
-  train_frac: 0.5
-  cal_frac:   0.1
-  test_frac:  0.4
+  train_frac: 0.6
+  cal_frac:   0.2
+  test_frac:  0.2
   seed: 42
 
-output:                              # canonical-write parameters
+output:
   format: csv
   precision: 6
-  column_sort: alphabetical          # alphabetical | source_order
+  column_sort: alphabetical
   row_shuffle_seed: 42
-
-expected_hashes:                     # pinned after the first canonical run
-  train.csv:        9c978ee7e2090d…
-  calibration.csv:  ecefce0dce8cc6…
-  test.csv:         b3e7b3ff890bb0…
 ```
 
-> **Migration note.** The v0.4 schema (`source: { kind, name, … }`) is
-> still accepted — un-migrated profiles in `tabprep/profiles/builtin/`
-> use it. v0.5's `downloader:`+`loader:` is preferred for new profiles
-> (per-dataset packages under `tabprep/datasets/<name>/` with their
-> own README, downloader, loader, and tests).
-
-When you run `tabprep prepare` (or `tabprep.prepare(...)`), the executor:
-
-1. **Auto-downloads** raw data into `cached_at/` via the registered
-   `BaseDownloader` (idempotent — re-runs hit a cache marker).
-2. Calls the registered `BaseLoader.load(cached_at, label_col, **loader_options)`,
-   which returns a raw `(dataframe, label_column)` tuple.
-3. Applies `rename_label` + `normalize_label_string` implicitly.
-4. Applies the ops in `pipeline` in order — each op is a pure function
-   `df → df`.
-5. Calls the **split** function to partition into train / calibration / test.
-6. Writes each split through the **canonical CSV writer**.
-7. Computes SHA-256 of every output file and writes `_manifest.json`.
-8. Cross-checks the observed hashes against `expected_hashes` (if pinned).
-   Exits non-zero with a clear diff if they disagree.
+That's the entire schema for a v0.5 profile. Drop it in any directory and
+point `tabprep.prepare(...)` at it.
 
 ---
 
-## Reproducibility contract
-
-Given the same profile, the same framework version, and the same source
-bytes, `tabprep prepare` produces **byte-identical** output CSVs on every
-machine. The contract is achieved by:
-
-1. **Deterministic ops.** Every randomized op uses an explicit seed.
-   `pandas.groupby(..., sort=True)` everywhere; never rely on insertion
-   order. `set(...)` is forbidden in deterministic paths; we use
-   `sorted(...)`.
-2. **Deterministic encodings.** `pd.get_dummies` is fed `sorted(columns)`,
-   so the encoded-column order is stable.
-3. **Canonical CSV writer.** Sorts columns alphabetically (or
-   `source_order` if explicitly opted in); sorts rows by per-row SHA-256
-   then permutes by `row_shuffle_seed`; formats floats with
-   `f"{x:.{precision}f}"` (no platform `%g`); uses `\n` line terminator;
-   RFC4180-style minimal quoting.
-4. **Source integrity.** When `source.sha256` is set, the raw download is
-   hashed before any op runs. If the upstream changed, the pipeline
-   aborts with a diff.
-5. **Output manifest.** Every run writes a `_manifest.json` with file
-   sizes, row counts, column counts, and SHA-256 hashes, plus the
-   profile + framework versions.
-6. **`expected_hashes` cross-check.** A profile with pinned hashes turns
-   `tabprep prepare` into a verify-on-write: any drift produces a
-   non-zero exit with a clear mismatch report.
-
----
-
-## Built-in ops (catalog)
+## Built-in ops (cheatsheet)
 
 Every op has the signature `fn(df, *, label_col, **params) -> df`.
 
-| Category | Op | Purpose |
+| Category | Op | What it does |
 |---|---|---|
-| **Label** | `rename_label` | Rename `source_column` to `rename_to` (drops conflicts). |
-| | `normalize_label_string` | `lowercase_underscore` or `none`. |
 | **Cleaning** | `drop_columns` | Drop a named list (missing columns ignored). |
-| | `drop_constant_columns` | Drop columns with a single unique value. |
-| | `drop_constant_prefix_columns` | Drop constant columns whose name starts with given prefixes. |
-| | `drop_ip_columns` | Drop common IP-address columns (network IDS leakage). |
+| | `drop_ip_columns` | Drop common IP/MAC columns — prevents leakage on network IDS data. |
 | | `drop_high_nan_columns` | Drop columns with NaN ratio > `threshold`. |
-| | `replace_inf` | Replace ±inf with NaN (or a numeric value). |
+| | `drop_constant_columns` | Drop columns with a single unique value. |
+| | `replace_inf` | Replace ±inf with NaN. |
 | | `fill_nan` | Fill NaN with a numeric constant. |
-| | `coerce_numeric` | Convert non-label string columns to numeric. |
+| | `coerce_numeric` | Convert string-numeric columns to numeric dtype. |
 | | `strip_column_whitespace` | Strip leading/trailing whitespace from column names. |
-| | `rename_columns` | Apply explicit `{old: new}` mapping. |
-| | `filter_rows_label_isnull` | Drop rows where the label is NaN/empty/`'nan'`. |
-| **Encoding** | `encode_categoricals` | One-hot encode low-cardinality strings; coerce mostly-numeric strings. |
-| | `rename_features_f0fN` | Rename non-label columns to `f0..f(N-1)` in source order. |
-| **Filtering** | `filter_min_class_count` | Drop rows whose label appears < `min_count` times. |
-| | `drop_classes` / `keep_classes` | Filter rows by label name list. |
-| **Sampling** | `cap_per_class` | Cap each class to at most N rows (deterministic). |
-| | `balanced_subsample` | Cap dataset to ≤ `max_total` rows by per-class subsampling. |
+| **Encoding** | `encode_categoricals` | One-hot encode low-cardinality strings. |
+| | `rename_features_f0fN` | Rename non-label columns to `f0..f(N-1)`. |
+| **Filtering** | `filter_rows_label_isnull` | Drop rows with null label. |
+| | `filter_min_class_count` | Drop rows in classes appearing < `min_count` times. |
+| | `drop_classes` / `keep_classes` | Filter rows by label-name list. |
+| **Sampling** | `stratified_fraction_sample` ⭐ | Take `fraction` of each class — preserves proportions. **The new default.** |
+| | `cap_per_class` | Cap each class to ≤ N rows. |
+| | `balanced_subsample` | Cap dataset to ≤ `max_total` rows by per-class subsampling (rebalances). |
 
 ---
 
-## Built-in datasets and source kinds
+## Authoring your own dataset
 
-**v0.5 dataset packages** (preferred — `tabprep/datasets/<name>/`):
+The full guide lives at [`docs/adding_a_dataset.md`](docs/adding_a_dataset.md).
+TL;DR three options, easiest first:
 
-| Package | Profiles | Downloader | Loader |
-|---|---|---|---|
-| `openml/` | `pendigits`, `letter`, `optdigits`, `satimage`, `segment`, `texture`, `har` | pre-fetches via `sklearn.datasets.fetch_openml` | reads name/version from `loader_options` |
-| `covertype/` | `covertype` | pre-fetches via `sklearn.datasets.fetch_covtype` | normalises the as_frame / ndarray fallback |
-| `iot23/` | `iot23` | direct download from Stratosphere CTU mirror | parses Zeek `conn.log.labeled` |
-
-**v0.4 source kinds** (still in use for unmigrated profiles in
-`tabprep/profiles/builtin/`; will be replaced by per-dataset packages
-in Phase 4):
-
-| Kind | Used by | What it does |
-|---|---|---|
-| `url` | `5g_nidd`, `ton_iot`, `edge_iiot` | Reads a single CSV from `cached_at`. SHA-256-checks if `source.sha256` is set. |
-| `concat_csvs` | `cicids2018`, `ciciot2023`, `unsw_nb15`, `cic_ddos2019`, `cic_iomt2024` | Walks a directory tree recursively, concatenates every `*.csv` (case-insensitive). Encoding auto-falls through utf-8 → latin-1 → cp1252 per-file. |
-| `nbaiot_dir` | `nbaiot` | Same as `concat_csvs` but derives the label from each file's basename (N-BaIoT convention). |
-| `manual` | (custom) | Reads a single user-provided CSV; no integrity check. |
+1. **Copy + edit a built-in profile.** No code, just YAML.
+2. **Add a custom op.** Drop a Python file under `tabprep/ops/` with a
+   `@op("name")` decorator. Now usable from any profile.
+3. **Add a v0.5 dataset package.** Full custom downloader + loader for
+   datasets that need bespoke logic. See `tabprep/datasets/openml/`.
 
 ---
 
-## Authoring a custom profile
+## Memory & speed for huge datasets
 
-**(a) Use a shipped loader.** Copy a built-in profile and adjust:
+The largest IDS profiles (`cic_ddos2019` = 29 GB raw, `ciciot2023` = 6
+GB raw) ship with a built-in **RAM guard** so the loader never OOMs.
+Two knobs control it:
 
-```bash
-cp $(python -c "import tabprep, pathlib; \
-print(pathlib.Path(tabprep.__file__).parent / 'profiles' / 'pendigits.yaml')") \
-   ./my_data.yaml
-$EDITOR ./my_data.yaml                  # adjust source / pipeline / split
-tabprep prepare --profile ./my_data.yaml
-# or, from Python:
-result = tabprep.prepare("./my_data.yaml")
+```yaml
+loader_options:
+  max_rows_per_file: 200000             # head/reservoir/stratified per CSV
+  sample_mode: stratified_by_label      # "head" | "reservoir" | "stratified_by_label"
+  memory_budget_gb: 16                  # RSS ceiling; aborts before swap
 ```
 
-Then run [`scripts/pin_hashes.py`](scripts/pin_hashes.py) to bake the
-observed SHA-256s back into the profile, and re-run `tabprep verify` to
-confirm reproducibility.
+`sample_mode: stratified_by_label` uses a two-pass class-aware scan:
+pass 1 reads only the label column to bin row indices, pass 2 keeps a
+proportional class-stratified sample. **Every class with ≥1 row in the
+file survives** even when the file is much larger than `max_rows_per_file`.
 
-**(b) New dataset package (v0.5).** Add a directory under
-`tabprep/datasets/<name>/` with `downloader.py`, `loader.py`,
-`__init__.py`, and a README. The package self-registers via
-`@downloader("name")` / `@loader("name")` decorators when imported by
-the autoloader at startup. See `tabprep/datasets/openml/` for a
-fully-worked example.
-
-**(c) New op.** Same pattern under `tabprep/ops/`:
-
-```python
-# tabprep/ops/your_op.py
-import pandas as pd
-from tabprep.ops._registry import op
-
-@op("my_drop_zeros")
-def my_drop_zeros(df, *, label_col, columns):
-    keep = ~(df[columns].sum(axis=1) == 0)
-    return df[keep].reset_index(drop=True)
-```
-
-Import it in `tabprep/ops/__init__.py`. The op is now usable from any
-profile YAML.
-
-**Note on universality.** Every dataset has its own column conventions —
-which columns leak identity, which are timestamps, which sentinel values
-encode missingness. tabprep gives you the building blocks; the recipe is
-your job. There is no "auto-clean" mode.
+When unset, the watchdog defaults to 80% of detected total RAM and
+raises `RAMBudgetExceeded` with an actionable message before the OS
+starts swapping.
 
 ---
 
@@ -309,74 +280,41 @@ your job. There is no "auto-clean" mode.
 
 ```
 tabprep/
-├── LICENSE                            # Apache 2.0
-├── README.md                          # this file
-├── pyproject.toml                     # python package definition (ships profiles/*)
-├── tabprep/                           # the package
-│   ├── api.py                         # public Python API (prepare / load_splits / …)
-│   ├── cli.py                         # `tabprep` shell entry point
-│   ├── __main__.py
+├── tabprep/
+│   ├── api.py                      # public Python API (prepare / load_splits)
+│   ├── cli.py                      # `tabprep` shell entry point
 │   ├── core/
-│   │   ├── profile.py                 # YAML loader + dataclass schema
-│   │   ├── pipeline.py                # source → ops → split → write
-│   │   ├── canonical.py               # byte-stable CSV writer
-│   │   ├── splits.py                  # train/cal/test implementations
-│   │   ├── manifest.py                # _manifest.json writer
-│   │   ├── hashing.py                 # SHA-256 helpers
-│   │   └── downloader.py              # generic HTTP fetch + extract
-│   ├── ops/                           # registry-based ops
-│   │   └── label.py / filter.py / clean.py / encode.py / sample.py
-│   ├── datasets/                      # v0.5 per-dataset packages
-│   │   ├── _base/                     # BaseDownloader + BaseLoader + registry
-│   │   ├── openml/                    # 7-profile UCI family
-│   │   ├── covertype/                 # standalone sklearn fetch
-│   │   └── iot23/                     # Stratosphere CTU malware captures
-│   ├── sources/                       # v0.4 source loaders (legacy, used by
-│   │   │                              #                       unmigrated profiles)
-│   │   └── url_source.py / concat_csvs_source.py / nbaiot_dir_source.py / …
-│   └── profiles/                      # bundled profile YAMLs (ship with `pip install`)
-│       ├── *.yaml                     # 9 v0.5 profiles
-│       └── builtin/*.yaml             # 9 unmigrated v0.4 profiles
-├── tests/                             # pytest suite (78 tests, 0 net deps)
-├── examples/
-│   └── quickstart.py                  # five canonical Python API patterns
+│   │   ├── profile.py              # YAML loader + dataclass schema
+│   │   ├── pipeline.py             # source → ops → split → write
+│   │   ├── canonical.py            # byte-stable CSV writer
+│   │   ├── memguard.py             # RAM watchdog (per-loader RSS ceiling)
+│   │   └── …
+│   ├── ops/                        # registry-based pipeline ops
+│   ├── datasets/                   # per-dataset downloaders + loaders
+│   │   ├── _base/                  # BaseDownloader + BaseLoader + sampling
+│   │   ├── openml/, covertype/, iot23/, cic_apt_iiot/, …
+│   ├── sources/                    # legacy v0.4 source loaders
+│   └── profiles/                   # bundled profile YAMLs
+│       ├── *.yaml                  # v0.5 profiles
+│       └── builtin/*.yaml          # v0.4 profiles (still supported)
+├── tests/                          # pytest suite (295+ tests)
+├── examples/quickstart.py          # five canonical Python API patterns
 ├── docs/
-│   └── DEVELOPMENT_LOG.md             # rolling per-phase handoff log
-├── scripts/
-│   └── pin_hashes.py                  # pins manifest hashes back into a profile
-└── .github/workflows/ci.yml           # lint + test + UCI reproducibility
+│   ├── adding_a_dataset.md         # how to add your own
+│   ├── design.md                   # architecture overview
+│   └── DEVELOPMENT_LOG.md          # rolling per-phase changelog
+└── scripts/pin_hashes.py           # bake manifest hashes back into a profile
 ```
-
----
-
-## Roadmap
-
-- v0.1 ✅ scaffold + `pendigits` end-to-end (initial commit)
-- v0.2 ✅ 8 UCI tabular profiles
-- v0.3 ✅ 7 IDS profiles
-- **v0.4** ✅ CI workflow (lint + test + UCI reproducibility)
-- v0.5 — `tabprep init-profile` wizard, public release on PyPI
-- v0.6 — Dockerfile, Hugging Face Hub publish
 
 ---
 
 ## Contributing
 
-We welcome new profiles, new ops, new source kinds, and bug fixes.
+We welcome new profiles, new ops, new dataset packages, and bug fixes.
+The bar for new features is "does it serve the reproducibility
+contract?".
 
-See [**CONTRIBUTING.md**](CONTRIBUTING.md) for the full contributor guide:
-local setup, test workflow, code style, the hash-pinning workflow when adding
-a profile, and the PR review checklist.
-
-Quick highlights:
-
-- Every PR must pass `ruff check tabprep tests` and `pytest`.
-- New profiles must include pinned `expected_hashes` and a passing
-  `tabprep verify --profile <yours>` run.
-- New ops/sources must register through `@op` / `@source` (no executor
-  changes), and add at least one smoke test under `tests/`.
-- Commit messages follow the style of existing commits (single
-  imperative-mood summary line, blank line, longer body if needed).
+See [**CONTRIBUTING.md**](CONTRIBUTING.md) for the contributor guide.
 
 ---
 
