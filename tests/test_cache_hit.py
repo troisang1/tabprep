@@ -189,6 +189,106 @@ def test_covertype_downloader_skips_when_marker_present(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Cache hit must short-circuit BEFORE consent-form POST
+# ---------------------------------------------------------------------------
+
+def test_http_archive_skips_consent_form_on_cache_hit(monkeypatch, tmp_path):
+    """Profiles that pin a `consent_form_url` (UNB CIC, UNSW Bot-IoT)
+    used to re-submit the licence form to the upstream on every prepare,
+    even when the data was already cached. Pin that the cache check
+    fires *before* the consent form submission."""
+    from tabprep.datasets._base import HTTPArchiveDownloader
+    from tabprep.datasets._base import downloader as dl_mod  # type: ignore  # decorator
+    # The decorator shadows the module; reach the file via its qualified path.
+    import importlib
+    dl_mod = importlib.import_module("tabprep.datasets._base.downloader")
+
+    consent_calls: list[str] = []
+
+    def fake_submit(url, **kwargs):
+        consent_calls.append(url)
+
+    monkeypatch.setattr(dl_mod, "_submit_consent_form", fake_submit)
+    monkeypatch.setattr(
+        core_dl, "_stream_download",
+        lambda *a, **kw: pytest.fail("network call on cache hit"),
+    )
+
+    (tmp_path / "data.csv").write_text("a\n1\n")
+
+    class _Probe(HTTPArchiveDownloader):
+        url = "https://example.com/data.zip"
+        consent_form_url = "https://example.com/licence-accept"
+        consent_form_fields = {"licence_accepted": "true"}
+
+    _Probe().download(tmp_path)
+    assert consent_calls == [], "consent form must not POST on cache hit"
+
+
+def test_http_multi_url_skips_consent_form_on_cache_hit(monkeypatch, tmp_path):
+    """Same contract for HTTPMultiURLDownloader: every target file
+    present → no consent POST, no fetches."""
+    from tabprep.datasets._base import HTTPMultiURLDownloader
+    from tabprep.datasets._base import downloader as dl_mod  # type: ignore  # decorator
+    # The decorator shadows the module; reach the file via its qualified path.
+    import importlib
+    dl_mod = importlib.import_module("tabprep.datasets._base.downloader")
+
+    consent_calls: list[str] = []
+
+    def fake_submit(url, **kwargs):
+        consent_calls.append(url)
+
+    monkeypatch.setattr(dl_mod, "_submit_consent_form", fake_submit)
+    monkeypatch.setattr(
+        core_dl, "_stream_download",
+        lambda *a, **kw: pytest.fail("network call on cache hit"),
+    )
+
+    (tmp_path / "file_a.csv").write_text("col\n1\n")
+    (tmp_path / "file_b.csv").write_text("col\n2\n")
+
+    class _Probe(HTTPMultiURLDownloader):
+        urls = (
+            "https://example.com/file_a.csv",
+            "https://example.com/file_b.csv",
+        )
+        consent_form_url = "https://example.com/licence"
+
+    _Probe().download(tmp_path)
+    assert consent_calls == [], "consent form must not POST on cache hit"
+
+
+def test_http_multi_url_partial_cache_still_fetches_missing(monkeypatch, tmp_path):
+    """If only SOME of the target files are present, the downloader
+    must fall through to fetching the missing ones — but the consent
+    form is then a single legitimate POST. Pin the partial-cache path."""
+    from tabprep.datasets._base import HTTPMultiURLDownloader
+
+    fetched: list[str] = []
+
+    def fake_stream(url, dest):
+        fetched.append(url)
+        Path(dest).write_text("downloaded\n")
+        return ""
+
+    monkeypatch.setattr(core_dl, "_stream_download", fake_stream)
+
+    # Only file_a is pre-staged; file_b must be fetched.
+    (tmp_path / "file_a.csv").write_text("col\n1\n")
+
+    class _Probe(HTTPMultiURLDownloader):
+        urls = (
+            "https://example.com/file_a.csv",
+            "https://example.com/file_b.csv",
+        )
+        archive_format = "none"
+
+    _Probe().download(tmp_path)
+    assert fetched == ["https://example.com/file_b.csv"]
+
+
+# ---------------------------------------------------------------------------
 # FormGatedDownloader: always raises (no auto-fetch path)
 # ---------------------------------------------------------------------------
 

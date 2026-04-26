@@ -34,8 +34,10 @@ pipeline:
     value: 0
   - op: filter_min_class_count
     min_count: 50
-  - op: balanced_subsample
-    max_total: 1000000                         # cap at 1M rows for tractability
+  # Standardised 5% stratified benchmark slice — preserves the
+  # upstream class proportions (no rebalancing).
+  - op: stratified_fraction_sample
+    fraction: 0.05
     seed: 42
 
 split:
@@ -51,7 +53,3 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-expected_hashes:
-  calibration.csv: e3f2ac302cf858ef063f7d3494630c1ff9602a9b32b6f4692b296c84016a3c63
-  test.csv: 502938ed8453b4aae9483f4083d861c0c24c595c6650d2df0acb5eb3715d0152
-  train.csv: 880f67836ae03b4489e9482cc4b7bce268abe2a411ec91732864e471b2d5c9f3

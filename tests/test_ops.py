@@ -29,7 +29,7 @@ EXPECTED_OPS = {
     # filter
     "filter_min_class_count", "drop_classes", "keep_classes",
     # sample
-    "cap_per_class", "balanced_subsample",
+    "cap_per_class", "balanced_subsample", "stratified_fraction_sample",
     # encode
     "encode_categoricals", "rename_features_f0fN",
 }
@@ -489,6 +489,88 @@ def test_balanced_subsample_zero_classes_returns_input():
         df, label_col="label", max_total=10, seed=42,
     )
     assert len(out) == 0
+
+
+# ---------------------------------------------------------------------------
+# sample.py — stratified_fraction_sample
+# ---------------------------------------------------------------------------
+
+def test_stratified_fraction_preserves_per_class_proportion():
+    """5% of a 700/200/100 distribution → 35/10/5 — proportions unchanged."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        "x": rng.normal(size=1000),
+        "label": (["a"] * 700) + (["b"] * 200) + (["c"] * 100),
+    })
+    out = OP_REGISTRY["stratified_fraction_sample"](
+        df, label_col="label", fraction=0.05, seed=42,
+    )
+    counts = out["label"].value_counts()
+    assert counts["a"] == 35
+    assert counts["b"] == 10
+    assert counts["c"] == 5
+
+
+def test_stratified_fraction_floor_keeps_tiny_class():
+    """A single-row class survives floor() with the floor=1 rule."""
+    df = pd.DataFrame({
+        "x": list(range(101)),
+        "label": (["a"] * 100) + ["rare"],
+    })
+    out = OP_REGISTRY["stratified_fraction_sample"](
+        df, label_col="label", fraction=0.05, seed=42,
+    )
+    counts = out["label"].value_counts()
+    assert counts["a"] == 5
+    assert counts["rare"] == 1
+
+
+def test_stratified_fraction_deterministic():
+    df = pd.DataFrame({
+        "x": list(range(100)),
+        "label": (["a"] * 50) + (["b"] * 50),
+    })
+    a = OP_REGISTRY["stratified_fraction_sample"](
+        df, label_col="label", fraction=0.5, seed=42,
+    )
+    b = OP_REGISTRY["stratified_fraction_sample"](
+        df, label_col="label", fraction=0.5, seed=42,
+    )
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_stratified_fraction_one_returns_full_distribution():
+    df = pd.DataFrame({
+        "x": list(range(50)),
+        "label": (["a"] * 30) + (["b"] * 20),
+    })
+    out = OP_REGISTRY["stratified_fraction_sample"](
+        df, label_col="label", fraction=1.0, seed=42,
+    )
+    assert len(out) == 50
+    counts = out["label"].value_counts()
+    assert counts["a"] == 30
+    assert counts["b"] == 20
+
+
+def test_stratified_fraction_rejects_invalid_fraction():
+    df = pd.DataFrame({"x": [1, 2], "label": ["a", "b"]})
+    with pytest.raises(ValueError):
+        OP_REGISTRY["stratified_fraction_sample"](
+            df, label_col="label", fraction=0.0, seed=42,
+        )
+    with pytest.raises(ValueError):
+        OP_REGISTRY["stratified_fraction_sample"](
+            df, label_col="label", fraction=1.5, seed=42,
+        )
+
+
+def test_stratified_fraction_missing_label_raises():
+    df = pd.DataFrame({"x": [1, 2]})
+    with pytest.raises(KeyError):
+        OP_REGISTRY["stratified_fraction_sample"](
+            df, label_col="label", fraction=0.5, seed=42,
+        )
 
 
 # ---------------------------------------------------------------------------

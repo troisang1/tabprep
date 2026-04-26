@@ -10,13 +10,16 @@ downloader: unsw_nb15
 loader: unsw_nb15
 cached_at: raw/unsw_nb15/
 loader_options:
-  max_rows_per_file: 1000000      # bound RAM on the largest CSV (~4 GB
-                                  # raw); 4 × 1M = 4M rows total — well
-                                  # above the downstream onehot/split
-                                  # working set on a 24 GiB host.
+  # The four CSVs are ~165 MB each (700k + 700k + 700k + 440k rows ≈
+  # 2.5M total — much smaller than the multi-GB CIC files). With
+  # `header=None` + an injected names list pandas can't dtype-infer,
+  # so every column lands as object dtype and the in-memory frame is
+  # ~5× larger than the CSV bytes. No per-file row cap is needed (the
+  # downstream 5% stratified sample bounds the working set), but the
+  # default 80%-of-RAM budget leaves enough headroom on a 24 GiB host
+  # for the four-file concat + onehot expansion.
   sample_mode: head
   sample_seed: 42
-  memory_budget_gb: 16
 
 label:
   source_column: attack_cat
@@ -42,6 +45,11 @@ pipeline:
     value: 0
   - op: filter_min_class_count
     min_count: 50
+  # Standardised 5% stratified benchmark slice — preserves the
+  # upstream class proportions (no rebalancing).
+  - op: stratified_fraction_sample
+    fraction: 0.05
+    seed: 42
 
 split:
   kind: stratified_class_balanced

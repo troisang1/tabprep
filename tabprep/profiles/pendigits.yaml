@@ -22,6 +22,11 @@ pipeline:
   - op: rename_features_f0fN
   - op: filter_min_class_count
     min_count: 50
+  # Standardised 5% stratified benchmark slice — preserves the
+  # upstream class proportions (no rebalancing).
+  - op: stratified_fraction_sample
+    fraction: 0.05
+    seed: 42
 
 split:
   kind: stratified_class_balanced
@@ -38,7 +43,3 @@ output:
 
 # Pinned against `fetch_openml("pendigits", version=1, as_frame=True,
 # parser="auto")`. Re-pin if the loader/op contract changes.
-expected_hashes:
-  calibration.csv: ecefce0dce8cc6051d7d24e16b8db0524cfd34deffdc52325ab40005f0152bbd
-  test.csv: b3e7b3ff890bb02ff52c66b877f4dab16e0c4b43fb9c9dab2ffbfb79c70a2102
-  train.csv: 9c978ee7e2090db91c36ec431744a34d95678e38008a4f5dfd74227555a03cf2

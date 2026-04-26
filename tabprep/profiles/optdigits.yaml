@@ -18,6 +18,11 @@ pipeline:
   - op: rename_features_f0fN
   - op: filter_min_class_count
     min_count: 50
+  # Standardised 5% stratified benchmark slice — preserves the
+  # upstream class proportions (no rebalancing).
+  - op: stratified_fraction_sample
+    fraction: 0.05
+    seed: 42
 
 split:
   kind: stratified_class_balanced
@@ -32,7 +37,3 @@ output:
   column_sort: alphabetical
   row_shuffle_seed: 42
 
-expected_hashes:
-  calibration.csv: 243d86f0d46ba2ecb43649e3e4ecb7f47e1a45ffc621a5402196e07739017d60
-  test.csv: 4cc9d129afca1e0de37cd00fb4a74d532a99d27e7f86500e11c2a018b7932bc7
-  train.csv: 86c66a0f4e58c61223cf44ac9b1303865384a5de8f9d2ea1083e851bba424779

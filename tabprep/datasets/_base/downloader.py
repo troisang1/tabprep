@@ -232,6 +232,14 @@ class HTTPArchiveDownloader(BaseDownloader):
             raise RuntimeError(
                 f"{type(self).__name__}: subclass must set `url` class attribute"
             )
+        # Cache-hit short-circuit BEFORE the consent form. download_and_extract
+        # also performs this check internally, but only after a consent_form
+        # POST has already happened — which would re-submit a licence form
+        # to the upstream provider on every prepare call. Bail at the top.
+        dest = Path(dest_dir)
+        if self.is_cache_populated(dest):
+            print(f"[tabprep] cache hit: {dest} already populated, skipping download")
+            return
         if self.consent_form_url:
             _submit_consent_form(
                 self.consent_form_url,
@@ -240,7 +248,7 @@ class HTTPArchiveDownloader(BaseDownloader):
             )
         download_and_extract(
             self.url,
-            Path(dest_dir),
+            dest,
             archive_format=self.archive_format,
             expected_sha256=self.sha256,
         )
@@ -275,15 +283,26 @@ class HTTPMultiURLDownloader(BaseDownloader):
             raise RuntimeError(
                 f"{type(self).__name__}: subclass must set `urls` class attribute"
             )
+        cached = Path(dest_dir)
+        # Cache-hit short-circuit BEFORE the consent form. We consider
+        # the cache fully populated only when EVERY expected target file
+        # is present and non-empty — partial caches still trigger a fetch
+        # for the missing files (download_and_extract's per-file check
+        # then short-circuits the present ones).
+        targets = [derive_target_name(u) for u in self.urls]
+        if all(
+            (cached / t).is_file() and (cached / t).stat().st_size > 0
+            for t in targets
+        ):
+            print(f"[tabprep] cache hit: {cached} all {len(targets)} target files present, skipping download")
+            return
         if self.consent_form_url:
             _submit_consent_form(
                 self.consent_form_url,
                 extra_fields=self.consent_form_fields,
                 user_keys=self.consent_form_user_keys,
             )
-        cached = Path(dest_dir)
-        for u in self.urls:
-            target = derive_target_name(u)
+        for u, target in zip(self.urls, targets):
             download_and_extract(
                 u,
                 cached,

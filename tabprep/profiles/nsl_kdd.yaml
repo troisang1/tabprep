@@ -27,8 +27,10 @@ pipeline:
     value: 0
   - op: filter_min_class_count
     min_count: 30                          # U2R has very rare attack subtypes
-  - op: balanced_subsample
-    max_total: 100000
+  # Standardised 5% stratified benchmark slice — preserves the
+  # upstream class proportions (no rebalancing).
+  - op: stratified_fraction_sample
+    fraction: 0.05
     seed: 42
 
 split:

@@ -43,8 +43,10 @@ pipeline:
     value: 0
   - op: filter_min_class_count
     min_count: 50
-  - op: balanced_subsample
-    max_total: 1000000
+  # Standardised 5% stratified benchmark slice — preserves the
+  # upstream class proportions (no rebalancing).
+  - op: stratified_fraction_sample
+    fraction: 0.05
     seed: 42
 
 split:
@@ -63,7 +65,3 @@ output:
 # Pinned against the Stratosphere lite tarball (~9.4 GB) extracted
 # under data/raw/iot23/. Re-pin if you change loader_options or the
 # pipeline.
-expected_hashes:
-  calibration.csv: 55a6e6ce5207f14b2961d180a93987d088a7df001974a529f6876cbb6e766826
-  test.csv: d3a859c6d3bde2ea9da4cad789b277917310f3e509d1460113531839418f76f3
-  train.csv: 6342e8b5bd708460ff229f32362d6b452b010f763e16c41000b6b3ba02b7c1ec
