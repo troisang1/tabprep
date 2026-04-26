@@ -117,6 +117,7 @@ class UNSWNB15Loader(BaseLoader):
         max_rows_per_file: int | None = None,
         sample_mode: str = "head",
         sample_seed: int = 42,
+        sample_label_col: str | None = None,
         memory_budget_gb: float | None = None,
         **opts: Any,
     ) -> tuple[pd.DataFrame, str]:
@@ -145,14 +146,19 @@ class UNSWNB15Loader(BaseLoader):
         parts: list[pd.DataFrame] = []
         for f in files:
             if max_rows_per_file is not None:
-                df = self.read_csv_with_row_cap(
-                    f,
-                    max_rows=int(max_rows_per_file),
-                    mode=sample_mode,
-                    seed=int(sample_seed),
-                    encodings=encodings,
+                row_cap_kwargs: dict[str, Any] = {
+                    "max_rows": int(max_rows_per_file),
+                    "mode": sample_mode,
+                    "seed": int(sample_seed),
+                    "encodings": encodings,
                     **read_kwargs,
-                )
+                }
+                if sample_mode == "stratified_by_label":
+                    # UNSW-NB15 CSVs are headerless; the loader injects
+                    # `names=UNSW_NB15_COLUMNS`. The label column index
+                    # under that schema is `attack_cat` (col 47).
+                    row_cap_kwargs["label_column"] = sample_label_col or label_col
+                df = self.read_csv_with_row_cap(f, **row_cap_kwargs)
             else:
                 df = self.read_csv_with_encoding_fallback(
                     f, encodings=encodings, **read_kwargs

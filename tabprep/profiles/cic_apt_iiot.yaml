@@ -24,7 +24,13 @@ cached_at: raw/cic_apt_iiot/
 # climbs further (e.g. on smaller hosts).
 loader_options:
   max_rows_per_file: 1000000
-  sample_mode: head
+  # `stratified_by_label` does a two-pass class-aware cap on each phase
+  # CSV — guarantees every APT-stage class survives even if one phase
+  # CSV begins with a long run of recon rows before the later kill-chain
+  # stages appear. The Kaggle mirror exposes the target as `label`
+  # (lowercase, no whitespace) so no `sample_label_col` override is
+  # needed — the loader defaults to the rename target.
+  sample_mode: stratified_by_label
   sample_seed: 42
   memory_budget_gb: 16
 

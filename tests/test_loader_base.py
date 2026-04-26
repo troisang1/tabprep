@@ -141,6 +141,105 @@ def test_row_cap_rejects_nonpositive_rows(tmp_path):
         BaseLoader.read_csv_with_row_cap(p, max_rows=0, mode="head")
 
 
+# ---------- read_csv_with_row_cap (stratified_by_label) -------------------
+
+def test_row_cap_stratified_keeps_every_class(tmp_path):
+    """The whole point: a class with very few rows in a huge file must
+    survive even at a small max_rows cap. Head/reservoir would lose it."""
+    p = tmp_path / "skewed.csv"
+    # 9990 rows of class 'majority' followed by 10 rows of class 'rare'.
+    # Head-100 would never see 'rare'; reservoir-100 hits it ~10% of the
+    # time per row, so on most seeds 'rare' gets lost. Stratified must
+    # keep at least one of every class.
+    rows = (["x,label"]
+            + [f"{i},majority" for i in range(9990)]
+            + [f"{i},rare"     for i in range(10)])
+    p.write_text("\n".join(rows) + "\n")
+
+    df = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=100, mode="stratified_by_label",
+        label_column="label", seed=42, chunksize=500,
+    )
+    assert "rare" in df["label"].values
+    assert "majority" in df["label"].values
+    # Per-class sizes: floor(100 * 9990/10000)=99 majority + max(1, floor(100*10/10000))=1 rare = 100
+    assert (df["label"] == "majority").sum() == 99
+    assert (df["label"] == "rare").sum() == 1
+
+
+def test_row_cap_stratified_preserves_proportions(tmp_path):
+    """When all classes have similar size, stratified sample is roughly
+    proportional with rounding."""
+    p = tmp_path / "balanced.csv"
+    rows = (["x,label"]
+            + [f"{i},a" for i in range(700)]
+            + [f"{i},b" for i in range(200)]
+            + [f"{i},c" for i in range(100)])
+    p.write_text("\n".join(rows) + "\n")
+    df = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=100, mode="stratified_by_label",
+        label_column="label", seed=42, chunksize=500,
+    )
+    counts = df["label"].value_counts()
+    # 100 * 700/1000 = 70, 100 * 200/1000 = 20, 100 * 100/1000 = 10
+    assert counts["a"] == 70
+    assert counts["b"] == 20
+    assert counts["c"] == 10
+
+
+def test_row_cap_stratified_smaller_than_cap_returns_all(tmp_path):
+    """If the file is smaller than max_rows, return the whole frame —
+    no point in pass 2."""
+    p = tmp_path / "tiny.csv"
+    rows = (["x,label"]
+            + [f"{i},a" for i in range(30)]
+            + [f"{i},b" for i in range(20)])
+    p.write_text("\n".join(rows) + "\n")
+    df = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=1000, mode="stratified_by_label",
+        label_column="label", seed=42, chunksize=10,
+    )
+    assert len(df) == 50
+
+
+def test_row_cap_stratified_deterministic(tmp_path):
+    p = tmp_path / "data.csv"
+    rows = (["x,label"]
+            + [f"{i},a" for i in range(500)]
+            + [f"{i},b" for i in range(500)])
+    p.write_text("\n".join(rows) + "\n")
+    a = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=100, mode="stratified_by_label",
+        label_column="label", seed=42, chunksize=100,
+    )
+    b = BaseLoader.read_csv_with_row_cap(
+        p, max_rows=100, mode="stratified_by_label",
+        label_column="label", seed=42, chunksize=100,
+    )
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_row_cap_stratified_requires_label_column(tmp_path):
+    p = tmp_path / "x.csv"
+    p.write_text("x,label\n1,a\n2,b\n")
+    with pytest.raises(ValueError, match="requires `label_column`"):
+        BaseLoader.read_csv_with_row_cap(
+            p, max_rows=10, mode="stratified_by_label",
+        )
+
+
+def test_row_cap_stratified_raises_on_missing_column(tmp_path):
+    p = tmp_path / "x.csv"
+    p.write_text("x,label\n1,a\n2,b\n")
+    # `usecols=[wrong_column]` raises a ValueError from pandas BEFORE
+    # our KeyError check even runs.
+    with pytest.raises((KeyError, ValueError)):
+        BaseLoader.read_csv_with_row_cap(
+            p, max_rows=10, mode="stratified_by_label",
+            label_column="not_a_column",
+        )
+
+
 # ---------- chunked_csv_iter -----------------------------------------------
 
 def test_chunked_csv_iter(tmp_path):

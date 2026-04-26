@@ -51,6 +51,7 @@ class InSDNLoader(BaseLoader):
         max_rows_per_file: int | None = None,
         sample_mode: str = "head",
         sample_seed: int = 42,
+        sample_label_col: str | None = None,
         memory_budget_gb: float | None = None,
         **opts: Any,
     ) -> tuple[pd.DataFrame, str]:
@@ -68,12 +69,14 @@ class InSDNLoader(BaseLoader):
         parts: list[pd.DataFrame] = []
         for f in files:
             if max_rows_per_file is not None:
-                df = self.read_csv_with_row_cap(
-                    f,
-                    max_rows=int(max_rows_per_file),
-                    mode=sample_mode,
-                    seed=int(sample_seed),
-                )
+                row_cap_kwargs: dict[str, Any] = {
+                    "max_rows": int(max_rows_per_file),
+                    "mode": sample_mode,
+                    "seed": int(sample_seed),
+                }
+                if sample_mode == "stratified_by_label":
+                    row_cap_kwargs["label_column"] = sample_label_col or label_col
+                df = self.read_csv_with_row_cap(f, **row_cap_kwargs)
             else:
                 df = self.read_csv_with_encoding_fallback(f)
             df = df.rename(columns={c: c.strip() for c in df.columns})

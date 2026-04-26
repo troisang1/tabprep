@@ -168,15 +168,16 @@ class BaseLoader(ABC):
         seed: int = 42,
         chunksize: int = 100_000,
         encodings: tuple[str, ...] | None = None,
+        label_column: str | None = None,
         **read_csv_kwargs: Any,
     ) -> pd.DataFrame:
         """Read a CSV with a hard row cap — bounds memory for huge files.
 
         The CIC-DDoS-2019 dataset ships individual CSVs of multi-GB
         size; reading any of them whole defeats the post-load
-        `balanced_subsample` cap (we'd OOM before getting there). This
-        helper lets the loader stream-read with a deterministic bound
-        on the in-memory row count.
+        `stratified_fraction_sample` step (we'd OOM before getting
+        there). This helper lets the loader stream-read with a
+        deterministic bound on the in-memory row count.
 
         Parameters
         ----------
@@ -185,18 +186,33 @@ class BaseLoader(ABC):
         mode
             - ``"head"``: take the first `max_rows` (cheapest; reads
               only what's needed; biased toward start of file).
-            - ``"reservoir"``: stream the full file in chunks of
-              `chunksize` and reservoir-sample `max_rows` rows
-              uniformly at random with `seed`. Cost is one full read
-              of the file; benefit is an unbiased sample. Memory stays
-              bounded at `max_rows + chunksize`.
+              Safe **only** when each file is class-pure (e.g. one
+              attack family per CSV) — for class-mixed files head
+              risks dropping minorities clustered later in the file.
+            - ``"reservoir"``: chunked Algorithm-R reservoir sampling.
+              Each row has uniform `max_rows / total_rows` probability.
+              Minority classes are sampled proportionally — fine in
+              expectation, but a class with very few rows can be
+              missed entirely by chance.
+            - ``"stratified_by_label"``: two-pass class-aware sample.
+              Pass 1 streams only the `label_column` to bin row
+              indices by class. Each class then gets
+              `max(1, floor(max_rows × n_class / N))` rows sampled
+              uniformly from its bucket. Pass 2 streams the file
+              again and keeps only the sampled rows. Guarantees
+              every class with ≥1 row survives — at the cost of a
+              second pass through the file.
         seed
-            Deterministic seed for reservoir mode.
+            Deterministic seed for reservoir / stratified modes.
         chunksize
-            Streaming chunk size for reservoir mode (reservoir mode
-            ignores it for files smaller than `chunksize`).
+            Streaming chunk size for reservoir / stratified modes.
         encodings, **read_csv_kwargs
             Forwarded to the underlying read.
+        label_column
+            Required when `mode="stratified_by_label"` — the column
+            name in the CSV's header that holds the class label.
+            For headerless CSVs (where the loader injects `names=`),
+            this must match a name in the injected list.
 
         Returns
         -------
@@ -218,8 +234,23 @@ class BaseLoader(ABC):
                 encodings=encodings,
                 **read_csv_kwargs,
             )
+        if mode == "stratified_by_label":
+            if not label_column:
+                raise ValueError(
+                    "stratified_by_label mode requires `label_column`"
+                )
+            return BaseLoader._stratified_by_label_sample_csv(
+                path,
+                max_rows=int(max_rows),
+                label_column=str(label_column),
+                seed=int(seed),
+                chunksize=int(chunksize),
+                encodings=encodings,
+                **read_csv_kwargs,
+            )
         raise ValueError(
-            f"unknown mode {mode!r} (expected 'head' or 'reservoir')"
+            f"unknown mode {mode!r} (expected 'head', 'reservoir', "
+            f"or 'stratified_by_label')"
         )
 
     @staticmethod
@@ -313,6 +344,128 @@ class BaseLoader(ABC):
         raise RuntimeError(
             f"BaseLoader._reservoir_sample_csv: could not decode {path} "
             f"with encodings={encs}: {last_exc}"
+        )
+
+    @staticmethod
+    def _stratified_by_label_sample_csv(
+        path: Path,
+        *,
+        max_rows: int,
+        label_column: str,
+        seed: int,
+        chunksize: int,
+        encodings: tuple[str, ...] | None,
+        **read_csv_kwargs: Any,
+    ) -> pd.DataFrame:
+        """Two-pass class-aware row cap — every class with ≥1 row survives.
+
+        Pass 1: stream the file in chunks reading **only** `label_column`.
+                Build a dict {label → list of row indices}. Cheap because
+                pandas reads single columns ~O(file_bytes / n_cols).
+
+        Plan:   each class C gets
+                  k_C = max(1, floor(max_rows × |C| / N))
+                rows sampled uniformly from its bucket. The overall total
+                may slightly under-shoot `max_rows` because of the floor=1
+                rule on tiny classes; this is intentional — the contract
+                is "no class is silently dropped".
+
+        Pass 2: stream the file again, keep only rows whose absolute
+                index appears in the sampled set, accumulate, return.
+
+        Memory bound:  O(N × sizeof(label_dtype)) for pass 1's index
+        bookkeeping + O(max_rows × n_cols) for pass 2's accumulator —
+        both far smaller than the full uncapped read.
+
+        For headerless CSVs the caller must supply `header` and `names`
+        in `read_csv_kwargs`; pass 1 will then load only the named
+        `label_column` from the injected schema. (Pandas accepts
+        `usecols=[label_column]` in combination with `names=…` as long
+        as the requested name is in the names list.)
+        """
+        encs = encodings or BaseLoader.DEFAULT_ENCODINGS
+        kwargs = {"low_memory": False, **read_csv_kwargs}
+        last_exc: Exception | None = None
+
+        for enc in encs:
+            try:
+                # ---- Pass 1: read only the label column to bin row indices.
+                pass1_kwargs = dict(kwargs)
+                pass1_kwargs["usecols"] = [label_column]
+                buckets: dict[Any, list[int]] = {}
+                row_idx = 0
+                for chunk in pd.read_csv(
+                    path, encoding=enc,
+                    chunksize=int(chunksize),
+                    **pass1_kwargs,
+                ):
+                    if label_column not in chunk.columns:
+                        raise KeyError(
+                            f"stratified_by_label: column {label_column!r} "
+                            f"not found (got {list(chunk.columns)})"
+                        )
+                    labels = chunk[label_column].tolist()
+                    for j, lab in enumerate(labels):
+                        # Treat NaN-as-string consistently — float('nan')
+                        # is unequal to itself which would split the
+                        # NaN-class across many buckets. Use the repr.
+                        if isinstance(lab, float) and lab != lab:           # NaN check
+                            key = "__NAN__"
+                        else:
+                            key = lab
+                        buckets.setdefault(key, []).append(row_idx + j)
+                    row_idx += len(chunk)
+
+                total = sum(len(v) for v in buckets.values())
+                if total == 0:
+                    return pd.DataFrame()
+
+                # If the file has fewer rows than the cap, we'd just
+                # take everything — no need for pass 2 with a row filter.
+                if total <= max_rows:
+                    return BaseLoader.read_csv_with_encoding_fallback(
+                        path, encodings=(enc,), **read_csv_kwargs
+                    )
+
+                # ---- Plan: per-class sample sizes + sampled index set.
+                rng = np.random.default_rng(int(seed))
+                wanted: set[int] = set()
+                for key, idxs in buckets.items():
+                    n_class = len(idxs)
+                    k = max(1, int(math.floor(max_rows * n_class / total)))
+                    if k >= n_class:
+                        wanted.update(idxs)
+                    else:
+                        chosen = rng.choice(np.asarray(idxs), size=k, replace=False)
+                        wanted.update(int(x) for x in chosen)
+
+                # ---- Pass 2: stream again, filter on absolute row index.
+                parts: list[pd.DataFrame] = []
+                row_idx = 0
+                for chunk in pd.read_csv(
+                    path, encoding=enc,
+                    chunksize=int(chunksize),
+                    **kwargs,
+                ):
+                    n = len(chunk)
+                    chunk_indices = range(row_idx, row_idx + n)
+                    keep_local = [i - row_idx for i in chunk_indices if i in wanted]
+                    if keep_local:
+                        parts.append(chunk.iloc[keep_local].copy())
+                    row_idx += n
+
+                if not parts:
+                    return pd.DataFrame()
+                out = pd.concat(parts, ignore_index=True)
+                # Final shuffle so per-class block ordering doesn't leak.
+                idx = rng.permutation(len(out))
+                return out.iloc[idx].reset_index(drop=True)
+            except UnicodeDecodeError as exc:
+                last_exc = exc
+                continue
+        raise RuntimeError(
+            f"BaseLoader._stratified_by_label_sample_csv: could not decode "
+            f"{path} with encodings={encs}: {last_exc}"
         )
 
     # ----------------------------------------------------- stratified sampling

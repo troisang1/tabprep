@@ -94,7 +94,11 @@ def _parse_glob_options(glob: str | None) -> dict[str, str]:
         if "=" not in token:
             continue
         k, v = token.split("=", 1)
-        out[k.strip()] = v.strip()
+        # Strip the key but preserve whitespace inside the value: some
+        # CIC CSVs ship the label column as ` Label` (leading space)
+        # and the profile must be able to specify that verbatim. The
+        # numeric/boolean parsers downstream tolerate trailing whitespace.
+        out[k.strip()] = v
     return out
 
 
@@ -127,8 +131,19 @@ def load_concat_csvs(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]:
     max_rows_per_file = (
         int(opts["max_rows_per_file"]) if "max_rows_per_file" in opts else None
     )
-    sample_mode = opts.get("sample", "head")          # "head" | "reservoir"
+    # sample_mode in {"head", "reservoir", "stratified_by_label"}.
+    # `stratified_by_label` does a two-pass class-aware sample inside
+    # each file — guarantees no class is silently dropped, at the cost
+    # of a second read of the file. For class-mixed CIC distributions
+    # this is the right default.
+    sample_mode = opts.get("sample", "head")
     sample_seed = int(opts.get("sample_seed", "42"))
+    # When sample=stratified_by_label, the column to bin by is taken
+    # from `sample_label_col` (defaults to the rename target the
+    # pipeline expects). Note: this is the column name AS IT APPEARS
+    # IN THE CSV HEADER — for CIC-DDoS-2019 that's " Label" with a
+    # leading space; the profile passes the literal string verbatim.
+    sample_label_col = opts.get("sample_label_col") or label
     memory_budget_gb = (
         float(opts["memory_budget_gb"]) if "memory_budget_gb" in opts else None
     )
@@ -156,13 +171,15 @@ def load_concat_csvs(spec: SourceSpec, label: str) -> tuple[pd.DataFrame, str]:
     for f in files:
         try:
             if max_rows_per_file is not None:
-                d = BaseLoader.read_csv_with_row_cap(
-                    f,
-                    max_rows=max_rows_per_file,
-                    mode=sample_mode,
-                    seed=sample_seed,
-                    encodings=encodings,
-                )
+                row_cap_kwargs: dict[str, object] = {
+                    "max_rows": max_rows_per_file,
+                    "mode": sample_mode,
+                    "seed": sample_seed,
+                    "encodings": encodings,
+                }
+                if sample_mode == "stratified_by_label":
+                    row_cap_kwargs["label_column"] = sample_label_col
+                d = BaseLoader.read_csv_with_row_cap(f, **row_cap_kwargs)
             else:
                 d = _read_with_encodings(f, encodings)
         except Exception as exc:                                      # noqa: BLE001

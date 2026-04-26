@@ -26,7 +26,13 @@ source:
   # downstream `balanced_subsample max_total: 1_000_000` so the cap
   # does not bias the final distribution. `memory_budget_gb=24` is a
   # hard ceiling — the loader aborts before swap thrashes.
-  glob: "*.csv|max_rows_per_file=200000|sample=head|memory_budget_gb=16"
+  # `sample=stratified_by_label` does a two-pass class-aware cap: pass 1
+  # streams only the ` Label` column to bin row indices by class, pass 2
+  # rereads with the sampled rows. Guarantees BENIGN survives even when a
+  # CIC CSV begins with a long run of attack rows. The CIC distros use a
+  # ` Label` header (leading whitespace); the explicit `sample_label_col`
+  # token preserves it verbatim.
+  glob: "*.csv|max_rows_per_file=200000|sample=stratified_by_label|sample_label_col= Label|memory_budget_gb=16"
 
 label:
   source_column: " Label"                       # Kaggle mirror keeps UNB's
