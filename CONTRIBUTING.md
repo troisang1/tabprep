@@ -57,6 +57,7 @@ The most common contribution. The fastest path:
    - `source.download_url` (or `download_urls` for multi-file)
    - `source.archive_format` if zip/tar
    - `label.source_column` — the column holding the class label
+   - `label.also_drop` — sibling target columns to remove (see 6)
    - The pipeline ops (drop the right ID columns, encode the right
      categoricals, etc.)
 4. **Standardised pipeline tail.** Every profile should end with:
@@ -75,10 +76,17 @@ The most common contribution. The fastest path:
 5. **Don't apply scaling / normalisation in the pipeline.** Raw
    feature values pass through. The model boundary is where scaling
    belongs.
-6. **Drop label-adjacent columns.** If your dataset ships a binary
-   `label` AND a multi-class `attack_cat`, drop one of them in the
-   pipeline (typically the binary one — it's a feature-leakage risk
-   when the multi-class label is the target).
+6. **Remove the three kinds of leakage** (see
+   [`docs/adding_a_dataset.md`](docs/adding_a_dataset.md) for the full table):
+   - **Sibling labels** → `label.also_drop: [...]`. A dataset often ships
+     several mutually-derived targets (binary + multi-class + sub-labels,
+     or a per-device identity like N-BaIoT `DeviceName`). Pick one via
+     `source_column`; list the rest in `also_drop` — they're labels, not
+     features, and run before the pipeline so you can't forget them.
+   - **IP / MAC addresses** → `op: drop_ip_columns` (also drops the
+     CICFlowMeter `Flow ID`). **Ports are kept on purpose.**
+   - **Timestamps** → `op: drop_timestamp_columns` (absolute capture
+     time only; elapsed-time / IAT features are kept).
 7. **Run + verify:**
 
    ```bash

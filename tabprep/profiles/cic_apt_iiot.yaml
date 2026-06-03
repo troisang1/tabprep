@@ -42,12 +42,15 @@ label:
                                                 # repack is `label`).
   rename_to: label
   normalize: lowercase_underscore
+  # CIC-APT-IIoT ships three nested targets: `label` (kill-chain stage,
+  # the target here), `subLabel`, and `subLabelCat`. The latter two are
+  # finer-grained labels — drop them or they hand the model the answer.
+  also_drop: [subLabel, subLabelCat]
 
 pipeline:
   - op: strip_column_whitespace
-  - op: drop_ip_columns                    # CIC CSVs include flow IDs / IPs
-  - op: drop_columns
-    columns: [Flow ID, Timestamp]
+  - op: drop_ip_columns                    # IPs + Flow ID (CIC 5-tuple)
+  - op: drop_timestamp_columns             # ts / Timestamp (capture wall-clock)
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot

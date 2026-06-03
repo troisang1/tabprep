@@ -25,6 +25,7 @@ pipeline:
   - op: drop_constant_prefix_columns
     prefixes: [dns_, ssl_, http_, weird_]
   - op: drop_ip_columns
+  - op: drop_timestamp_columns           # `ts` if the mirror carries it
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot

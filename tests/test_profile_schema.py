@@ -310,3 +310,28 @@ def test_label_spec_defaults():
     label = LabelSpec(source_column="raw")
     assert label.rename_to == "label"
     assert label.normalize == "lowercase_underscore"
+    assert label.also_drop == []
+
+
+def test_load_profile_parses_label_also_drop(tmp_path):
+    """`label.also_drop` (sibling target columns to drop) round-trips
+    through the YAML loader; absent → empty list."""
+    yaml = """
+name: ml
+version: 1.0.0
+description: multi-label schema test
+downloader: bot_iot
+loader: bot_iot
+cached_at: raw/ml/
+label:
+  source_column: category
+  rename_to: label
+  also_drop: [attack, subcategory]
+pipeline:
+  - op: filter_min_class_count
+    min_count: 50
+"""
+    p = tmp_path / "ml.yaml"
+    p.write_text(yaml)
+    prof = load_profile(p)
+    assert prof.label.also_drop == ["attack", "subcategory"]

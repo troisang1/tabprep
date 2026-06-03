@@ -67,6 +67,24 @@ class _PipelineTestDownloader(BaseDownloader):
         Path(dest_dir).mkdir(parents=True, exist_ok=True)
 
 
+@loader("_pipeline_multilabel_test")
+class _PipelineMultiLabelLoader(BaseLoader):
+    """Like the base loader but also emits two *sibling target* columns
+    (`attack`, `subcategory`) — the multi-label IDS shape that
+    `label.also_drop` exists to strip before they leak."""
+
+    def load(self, raw_dir, label_col, **opts):
+        rows = []
+        for cls in ("a", "b", "c"):
+            for i in range(10):
+                rows.append({
+                    "x": float(i), "y": i * 2, "raw": cls,
+                    "attack": 1 if cls != "a" else 0,   # binary sibling target
+                    "subcategory": f"{cls}_sub",         # fine-grained sibling
+                })
+        return pd.DataFrame(rows), label_col
+
+
 # ---------------------------------------------------------------------------
 # Profile factory
 # ---------------------------------------------------------------------------
@@ -127,6 +145,60 @@ def test_run_pipeline_implicit_label_rename(tmp_path):
     train = pd.read_csv(tmp_path / "_pipeline_test" / "train.csv")
     assert "label" in train.columns
     assert "raw" not in train.columns
+
+
+def test_run_pipeline_also_drop_removes_sibling_targets(tmp_path):
+    """`label.also_drop` must strip sibling target columns BEFORE the
+    pipeline runs, so a multi-label IDS dataset can't leak the answer.
+    The chosen target survives as `label`; `attack`/`subcategory` do not."""
+    prof = Profile(
+        name="_pipeline_multilabel_test",
+        version="0.0.1",
+        description="synthetic multi-label",
+        loader="_pipeline_multilabel_test",
+        downloader="_pipeline_test",
+        cached_at="/tmp/_pipeline_ml_cache",
+        loader_options={},
+        label=LabelSpec(source_column="raw", rename_to="label",
+                        also_drop=["attack", "subcategory"]),
+        pipeline=[],
+        split=SplitSpec(train_frac=0.6, cal_frac=0.2, test_frac=0.2, seed=42),
+        output=OutputSpec(precision=6),
+        expected_hashes={},
+    )
+    run_pipeline(prof, output_root=tmp_path)
+
+    train = pd.read_csv(tmp_path / "_pipeline_multilabel_test" / "train.csv")
+    assert "label" in train.columns
+    assert "attack" not in train.columns
+    assert "subcategory" not in train.columns
+    assert "x" in train.columns and "y" in train.columns
+
+
+def test_run_pipeline_also_drop_never_drops_chosen_label(tmp_path):
+    """A profile that mistakenly lists its own target in `also_drop` must
+    still keep the label — the executor guards `label_col` out."""
+    prof = Profile(
+        name="_pipeline_multilabel_test",
+        version="0.0.1",
+        description="synthetic multi-label",
+        loader="_pipeline_multilabel_test",
+        downloader="_pipeline_test",
+        cached_at="/tmp/_pipeline_ml_cache",
+        loader_options={},
+        # 'label' is the rename target; listing it must be a no-op for it.
+        label=LabelSpec(source_column="raw", rename_to="label",
+                        also_drop=["label", "attack"]),
+        pipeline=[],
+        split=SplitSpec(train_frac=0.6, cal_frac=0.2, test_frac=0.2, seed=42),
+        output=OutputSpec(precision=6),
+        expected_hashes={},
+    )
+    run_pipeline(prof, output_root=tmp_path)
+
+    train = pd.read_csv(tmp_path / "_pipeline_multilabel_test" / "train.csv")
+    assert "label" in train.columns
+    assert "attack" not in train.columns
 
 
 def test_run_pipeline_runs_ops_in_order(tmp_path):

@@ -77,6 +77,14 @@ def _apply_pipeline(df: pd.DataFrame, profile: Profile,
         cur, label_col=label_col, method=profile.label.normalize
     )
 
+    # Drop sibling target columns (the labels the profile did NOT pick) so
+    # they cannot leak the answer into the features. Done structurally here
+    # — not as an opt-in pipeline op — so a profile author can never forget
+    # it. The chosen label_col is guarded out in case it is listed.
+    extra = [c for c in profile.label.also_drop if c != label_col]
+    if extra:
+        cur = OP_REGISTRY["drop_columns"](cur, label_col=label_col, columns=extra)
+
     for spec in profile.pipeline:
         fn = OP_REGISTRY.get(spec.op)
         if fn is None:

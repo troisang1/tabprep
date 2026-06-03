@@ -25,15 +25,14 @@ label:
   source_column: attack_cat
   rename_to: label
   normalize: lowercase_underscore
+  # `Label` is the binary upstream target — a sibling of attack_cat. Drop
+  # it as a label, not a feature, so it can't leak the answer.
+  also_drop: [Label]
 
 pipeline:
-  # The binary `Label` column is the *other* upstream target. Drop it
-  # explicitly so it doesn't leak into the feature set after attack_cat
-  # is renamed to `label`.
-  - op: drop_columns
-    columns: [Label]
   - op: filter_rows_label_isnull
   - op: drop_ip_columns
+  - op: drop_timestamp_columns           # Stime / Ltime (capture wall-clock)
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot

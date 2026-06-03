@@ -31,6 +31,7 @@ pipeline:
   - op: strip_column_whitespace
   - op: filter_rows_label_isnull
   - op: drop_ip_columns
+  - op: drop_timestamp_columns           # Timestamp (CICFlowMeter capture time)
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot

@@ -30,8 +30,9 @@ pipeline:
   # the latter as the multi-class target; rename_label drops the binary
   # `label` automatically when `detailed-label` is renamed to `label`.
   - op: drop_columns
-    columns: [ts, uid, tunnel_parents]         # timestamp + identifiers
+    columns: [uid, tunnel_parents]             # Zeek flow identifiers
   - op: drop_ip_columns                        # id.orig_h, id.resp_h
+  - op: drop_timestamp_columns                 # ts (Zeek epoch capture time)
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot

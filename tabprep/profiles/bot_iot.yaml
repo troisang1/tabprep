@@ -22,22 +22,23 @@ label:
   source_column: category
   rename_to: label
   normalize: lowercase_underscore
+  # Bot-IoT ships three mutually-derived targets: `attack` (binary 0/1),
+  # `category` (multi-class family, the target here), and `subcategory`
+  # (specific attack). The other two MUST be dropped or they leak the
+  # answer into the feature set.
+  also_drop: [attack, subcategory]
 
 pipeline:
-  # Bot-IoT ships three label-adjacent columns: `attack` (binary 0/1),
-  # `category` (multi-class family), and `subcategory` (specific
-  # attack). The profile uses `category` as the multi-class target;
-  # the other two MUST be dropped or they leak the answer into the
-  # feature set.
+  # `pkSeqID` is a row index and `seq` an Argus sequence number — flow
+  # identifiers, not features. (`stime` / `ltime` are handled by
+  # `drop_timestamp_columns` below.)
   - op: drop_columns
-    columns: [attack, subcategory]
-  # Bot-IoT flow records also include flow-level identifiers and
-  # timestamps that, while not labels, are not legitimate features
-  # (`pkSeqID` is a row index; `stime` / `ltime` are wall-clock
-  # microseconds tied to the capture session).
-  - op: drop_columns
-    columns: [pkSeqID, stime, ltime, seq]
-  - op: drop_ip_columns                       # saddr, daddr (and ports)
+    columns: [pkSeqID, seq]
+  # `saddr` / `daddr` are the source/destination IPs (~20 unique in this
+  # testbed — small enough to one-hot and leak host identity); the
+  # `*SrcIP` / `*DstIP` engineered aggregates go too.
+  - op: drop_ip_columns
+  - op: drop_timestamp_columns           # stime / ltime (capture wall-clock)
   - op: encode_categoricals      # the OpenML mirror has been pre-cleaned;
                                  # category is the only non-numeric column
                                  # we'd encode (it's the label so it's skipped).

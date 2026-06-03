@@ -77,8 +77,9 @@ results are comparable across datasets:
 | **5% stratified subsample** | Tractable size; preserves class proportions; tiny classes survive (floor=1). |
 | **No rebalancing** | Classes stay in their natural ratios — no synthetic balance. |
 | **No scaling / normalisation** | Raw feature values are preserved. Apply your own scaler at the model boundary if you need one. |
-| **IP / MAC / identifier columns dropped** | Removes trivial leakage in network IDS data (no model can cheat by memorising source IP). |
-| **One label column** | Datasets with both binary + multi-class targets keep only the multi-class one (the binary is dropped to prevent leakage). |
+| **IP / MAC columns dropped** | `drop_ip_columns` removes source/destination IP & MAC addresses and the CICFlowMeter `Flow ID` 5-tuple — a model must not cheat by memorising *which host* attacked. Ports are deliberately **kept** (they carry protocol behaviour, not host identity). |
+| **Timestamps dropped** | `drop_timestamp_columns` removes absolute capture-clock columns (e.g. UNSW-NB15 `Stime`/`Ltime`, CIC `Timestamp`, Zeek `ts`) so a model can't separate classes by *when* traffic was recorded. Elapsed-time / inter-arrival features (`duration`, `*IAT*`, idle/active) are kept. |
+| **One label column** | A dataset may ship several mutually-derived targets — binary + multi-class + sub-labels (e.g. CIC-APT-IIoT `label`/`subLabel`/`subLabelCat`), or a per-device identity (N-BaIoT). The profile picks one via `label.source_column`; every sibling target is listed in `label.also_drop` and removed before the pipeline so it can't leak the answer. |
 | **RAM-bounded loading** | Large datasets (cic_ddos2019 = 29 GB raw) load with per-file caps and a memory watchdog so the process never OOMs. |
 | **Class-aware sampling** | Per-file row caps use a two-pass `stratified_by_label` mode that guarantees no minority class is silently dropped. |
 
@@ -178,9 +179,11 @@ label:
   source_column: label                  # the column holding the target
   rename_to: label
   normalize: lowercase_underscore
+  # also_drop: [other_label, sub_label]  # sibling targets to remove (anti-leakage)
 
 pipeline:                               # ordered cleaning ops
-  - op: drop_ip_columns                 # drop network IPs (anti-leakage)
+  - op: drop_ip_columns                 # drop IPs / MACs / Flow ID (anti-leakage)
+  - op: drop_timestamp_columns          # drop wall-clock timestamps (anti-leakage)
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot
@@ -221,7 +224,8 @@ Every op has the signature `fn(df, *, label_col, **params) -> df`.
 | Category | Op | What it does |
 |---|---|---|
 | **Cleaning** | `drop_columns` | Drop a named list (missing columns ignored). |
-| | `drop_ip_columns` | Drop common IP/MAC columns — prevents leakage on network IDS data. |
+| | `drop_ip_columns` | Drop IP/MAC address columns + CICFlowMeter `Flow ID` (identity leakage). Name-normalised match; ports are **not** dropped. |
+| | `drop_timestamp_columns` | Drop absolute wall-clock timestamp columns (temporal leakage). Keeps duration / IAT / idle-active timing features. |
 | | `drop_high_nan_columns` | Drop columns with NaN ratio > `threshold`. |
 | | `drop_constant_columns` | Drop columns with a single unique value. |
 | | `replace_inf` | Replace ±inf with NaN. |

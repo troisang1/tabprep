@@ -23,6 +23,7 @@ EXPECTED_OPS = {
     "rename_label", "normalize_label_string",
     # clean
     "drop_columns", "drop_constant_columns", "drop_ip_columns",
+    "drop_timestamp_columns",
     "drop_high_nan_columns", "replace_inf", "fill_nan", "coerce_numeric",
     "drop_constant_prefix_columns", "strip_column_whitespace",
     "rename_columns", "filter_rows_label_isnull",
@@ -193,6 +194,102 @@ def test_drop_ip_columns_does_not_drop_label():
     df = pd.DataFrame({"src_ip": ["a"], "feat": [1.0]})
     out = OP_REGISTRY["drop_ip_columns"](df, label_col="src_ip")
     assert "src_ip" in out.columns
+
+
+# The real IP/MAC column names as they appear in each supported IDS
+# dataset's raw schema. Every one of these MUST be dropped — these are
+# the exact names that previously slipped past the substring matcher and
+# leaked host identity into the feature set (bot_iot's `saddr` was even
+# one-hot encoded into the shipped output).
+@pytest.mark.parametrize("colname", [
+    # Bot-IoT (Argus) — were one-hot-encoded & shipped before the fix
+    "saddr", "daddr",
+    # CICFlowMeter (CIC-DDoS2019, InSDN, CIC-IDS2018) after whitespace strip
+    "Source IP", "Destination IP", "Src IP", "Dst IP", "Flow ID",
+    # Zeek / Bro conn.log (IoT-23)
+    "id.orig_h", "id.resp_h",
+    # already-handled namings (regression guard)
+    "src_ip", "dst_ip", "srcip", "dstip",
+    "ip.src_host", "ip.dst_host", "arp.src.proto_ipv4", "arp.dst.proto_ipv4",
+    # Argus/5G-NIDD CamelCase addresses
+    "SrcAddr", "DstAddr",
+    # MAC / link-layer — no current dataset ships these, but the op claims
+    # to remove identity leakage, so they must go if a profile gains them
+    "eth.src", "eth.dst", "arp.src.hw_mac", "arp.dst.hw_mac",
+    "src_mac", "dst_mac", "Source MAC",
+])
+def test_drop_ip_columns_drops_real_dataset_ip_mac_names(colname):
+    df = pd.DataFrame({colname: ["x", "y"], "feat": [1.0, 2.0], "label": ["a", "b"]})
+    out = OP_REGISTRY["drop_ip_columns"](df, label_col="label")
+    assert colname not in out.columns, f"{colname!r} leaked through drop_ip_columns"
+    assert "feat" in out.columns and "label" in out.columns
+
+
+# Legitimate features whose names merely *resemble* an IP/MAC token. These
+# MUST survive — dropping them would corrupt the dataset (NSL-KDD loses a
+# third of its features, etc.).
+@pytest.mark.parametrize("colname", [
+    # NSL-KDD aggregate connection statistics ("dst_host_*", not an address)
+    "dst_host_count", "dst_host_srv_count", "dst_host_same_srv_rate",
+    "dst_host_same_src_port_rate", "dst_host_diff_srv_rate",
+    "src_bytes", "dst_bytes",
+    # UNSW-NB15 — "is same IPs & ports" flag (a behaviour feature, not an IP)
+    "is_sm_ips_ports",
+    # IoT-23 — legit byte counts (contain "ip"/"orig"/"resp" but not host/IP)
+    "orig_ip_bytes", "resp_ip_bytes", "id.orig_p", "id.resp_p",
+    # CIC-IoT feature CSVs — bare protocol-presence flags, NOT addresses
+    "MAC", "IPv", "LLC", "ARP", "ICMP",
+    # Edge-IIoT — numeric ARP hardware-address *length*, not the MAC itself
+    "arp.hw.size", "arp.opcode",
+    # CIC flow-timing feature that contains the literal substring "flow_id"
+    "flow_idle_time", "flow_active_time", "flow_duration",
+    # ports are out of scope for this op (handled via explicit drop_columns)
+    "Source Port", "Destination Port", "sport", "dsport",
+])
+def test_drop_ip_columns_keeps_lookalike_features(colname):
+    df = pd.DataFrame({colname: [1.0, 2.0], "feat": [3.0, 4.0], "label": ["a", "b"]})
+    out = OP_REGISTRY["drop_ip_columns"](df, label_col="label")
+    assert colname in out.columns, f"{colname!r} wrongly dropped by drop_ip_columns"
+
+
+# ---------------------------------------------------------------------------
+# clean.py — drop_timestamp_columns
+# ---------------------------------------------------------------------------
+
+# Real wall-clock timestamp column names across the supported IDS datasets.
+@pytest.mark.parametrize("colname", [
+    "ts",                       # Zeek / IoT-23, CIC-APT-IIoT
+    "Timestamp",                # CICFlowMeter (CIC-IDS2018, CIC-DDoS2019, InSDN)
+    "Stime", "Ltime",           # UNSW-NB15 start / last packet time
+    "stime", "ltime",           # Bot-IoT (lowercase)
+    "frame.time",               # Edge-IIoT
+    "first_seen", "last_seen", "flow_start",
+])
+def test_drop_timestamp_columns_drops_real_timestamps(colname):
+    df = pd.DataFrame({colname: [1, 2], "feat": [3.0, 4.0], "label": ["a", "b"]})
+    out = OP_REGISTRY["drop_timestamp_columns"](df, label_col="label")
+    assert colname not in out.columns, f"{colname!r} leaked through drop_timestamp_columns"
+    assert "feat" in out.columns and "label" in out.columns
+
+
+# Elapsed-time / timing FEATURES that merely contain "time"/"dur" — must survive.
+@pytest.mark.parametrize("colname", [
+    "dur", "Dur", "duration", "flow_duration",
+    "std_duration", "average_duration", "max_duration",
+    "flow_idle_time", "flow_active_time",
+    "Flow IAT Mean", "Fwd IAT Tot", "Bwd IAT Min",
+    "Active Mean", "Idle Max", "RunTime", "TcpRtt",
+])
+def test_drop_timestamp_columns_keeps_timing_features(colname):
+    df = pd.DataFrame({colname: [1.0, 2.0], "feat": [3.0, 4.0], "label": ["a", "b"]})
+    out = OP_REGISTRY["drop_timestamp_columns"](df, label_col="label")
+    assert colname in out.columns, f"{colname!r} wrongly dropped by drop_timestamp_columns"
+
+
+def test_drop_timestamp_columns_never_drops_label():
+    df = pd.DataFrame({"ts": [1, 2], "feat": [3.0, 4.0]})
+    out = OP_REGISTRY["drop_timestamp_columns"](df, label_col="ts")
+    assert "ts" in out.columns
 
 
 # ---------------------------------------------------------------------------

@@ -72,14 +72,26 @@ proportions. Want the full thing? Set `fraction: 1.0`.
 - **No rebalancing** (`balanced_subsample`, `cap_per_class` for
   balance). Keep classes in their natural ratios — model evaluation
   metrics depend on it.
-- **Drop label-adjacent columns.** If your dataset has both a binary
-  `label` AND a multi-class `attack_cat`, drop the one you're NOT
-  using as the target. Otherwise the model just memorises the
-  redundant column. Use `op: drop_columns columns: [Label, ...]`.
-- **Drop ID/identifier columns.** IPs, MACs, flow IDs, timestamps,
-  capture-session counters — these are not features, they're
-  metadata that leaks identity. Use `op: drop_ip_columns` for the
-  common cases.
+### Preventing leakage (read this for any network/IDS dataset)
+
+Leakage = a column that lets the model "cheat" by keying on identity or
+recording conditions instead of traffic behaviour. It inflates benchmark
+accuracy and collapses on any other network. There are **three distinct
+kinds**, each with its own dedicated handling — do not improvise with a
+generic `drop_columns`:
+
+| Leak | How to remove it | What it catches / keeps |
+|---|---|---|
+| **Sibling labels** | `label.also_drop: [...]` in the **label block** | A dataset often ships several mutually-derived targets — pick one via `source_column`, list the rest here. Examples: Bot-IoT `attack`/`subcategory`, CIC-APT-IIoT `subLabel`/`subLabelCat`, UNSW-NB15 binary `Label`. A **per-device identity** column (N-BaIoT `DeviceName`) is also a label — it correlates with the attack family — so it goes here too, not in the features. |
+| **IP / MAC addresses** | `op: drop_ip_columns` | Source/destination IP & MAC columns under *any* common naming (`saddr`/`daddr`, `Src IP`, `id.orig_h`, `SrcAddr`, `eth.src`, `*.hw_mac`, …) plus the CICFlowMeter `Flow ID` 5-tuple. **Ports are intentionally kept** — they are protocol behaviour, not host identity. Matching is name-normalised, so it won't clip look-alike features like NSL-KDD `dst_host_count` or `is_sm_ips_ports`. |
+| **Timestamps** | `op: drop_timestamp_columns` | Absolute wall-clock capture time (`ts`, `Timestamp`, UNSW-NB15 `Stime`/`Ltime`, Edge-IIoT `frame.time`, …). Attacks are captured in fixed windows, so the clock alone separates classes. **Elapsed-time features are kept** — `duration`/`dur`, inter-arrival `*IAT*`, `flow_idle_time`/`flow_active_time`, `RunTime`, `TcpRtt`. |
+
+`also_drop` runs *structurally* before your pipeline (you cannot forget
+it), and both ops are name-normalised pattern matchers — you do **not**
+need to know the exact column casing/separators upfront. For a column
+that is genuinely dataset-specific and none of the above (free-text
+payloads, row indices, capture-session counters like Bot-IoT `pkSeqID`),
+use an explicit `op: drop_columns columns: [...]`.
 
 ## (c) New v0.5 dataset package
 

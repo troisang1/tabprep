@@ -19,10 +19,13 @@ label:
   source_column: Attack Type
   rename_to: label
   normalize: lowercase_underscore
+  # `Label` (binary) and `Attack Tool` are sibling targets of Attack Type
+  # — `Attack Tool` in particular all but names the attack. Drop as labels.
+  also_drop: ["Label", "Attack Tool"]
 
 pipeline:
   - op: drop_columns
-    columns: ["Unnamed: 0", "Seq", "Label", "Attack Tool"]
+    columns: ["Unnamed: 0", "Seq"]          # row index + capture sequence id
   - op: drop_ip_columns
   - op: encode_categoricals
     max_cardinality: 50

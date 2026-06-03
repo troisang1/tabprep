@@ -19,13 +19,17 @@ label:
   source_column: Attack_type
   rename_to: label
   normalize: lowercase_underscore
+  # `Attack_label` is the binary sibling target of Attack_type — drop it
+  # as a label, not a feature.
+  also_drop: [Attack_label]
 
 pipeline:
+  # High-entropy payload / URI fields that are free-text or per-flow
+  # unique (effectively identifiers). `icmp.transmit_timestamp` is an
+  # in-payload clock, not a standard capture-time column name, so it is
+  # listed explicitly rather than left to drop_timestamp_columns.
   - op: drop_columns
     columns:
-      - frame.time
-      - arp.src.proto_ipv4
-      - arp.dst.proto_ipv4
       - icmp.transmit_timestamp
       - mqtt.msg
       - http.file_data
@@ -33,8 +37,8 @@ pipeline:
       - http.request.uri.query
       - tcp.payload
       - tcp.options
-      - Attack_label
-  - op: drop_ip_columns
+  - op: drop_ip_columns                  # ip.src_host/ip.dst_host + arp.*.proto_ipv4
+  - op: drop_timestamp_columns           # frame.time (capture wall-clock)
   - op: encode_categoricals
     max_cardinality: 50
     method: onehot

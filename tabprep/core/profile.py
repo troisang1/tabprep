@@ -62,10 +62,21 @@ class SourceSpec:
 
 @dataclass
 class LabelSpec:
-    """How to identify the target column."""
+    """How to identify the target column.
+
+    `also_drop` lists *other* label/target columns to remove. IDS datasets
+    routinely ship several mutually-derived targets (e.g. Bot-IoT has
+    `attack`/`category`/`subcategory`; CIC-APT-IIoT has
+    `label`/`subLabel`/`subLabelCat`). The profile picks one as the target
+    via `source_column`; every sibling target named here is dropped before
+    the pipeline runs so it cannot leak the answer into the feature set.
+    (A pre-existing column literally named `rename_to` is dropped by
+    `rename_label` automatically and need not be listed.)
+    """
     source_column: str                         # column name in the raw dataset
     rename_to: str = "label"
     normalize: str = "lowercase_underscore"    # lowercase_underscore | none
+    also_drop: list[str] = field(default_factory=list)  # sibling target columns to drop
 
 
 @dataclass
@@ -171,6 +182,7 @@ def _coerce_label(d: dict[str, Any]) -> LabelSpec:
         source_column=str(d["source_column"]),
         rename_to=str(d.get("rename_to", "label")),
         normalize=str(d.get("normalize", "lowercase_underscore")),
+        also_drop=[str(x) for x in (d.get("also_drop") or [])],
     )
 
 

@@ -21,6 +21,12 @@ label:
   source_column: label                         # set by the source loader
   rename_to: label
   normalize: lowercase_underscore
+  # N-BaIoT is captured per device, so the device identity correlates
+  # almost perfectly with the attack family — it is a label, NOT a
+  # feature. The current loader derives only `label` (no device column),
+  # so this is a guard: if any mirror/loader reintroduces `DeviceName`,
+  # it is dropped instead of leaking host identity into the features.
+  also_drop: [DeviceName]
 
 pipeline:
   - op: drop_ip_columns
